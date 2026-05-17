@@ -1,0 +1,15 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-api-pdb
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/name: web-api
+    app.kubernetes.io/part-of: secure-statement-delivery
+spec:
+  # Keep at least 1 pod running during voluntary disruptions
+  # (node drain, cluster upgrades, etc.).
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web-api

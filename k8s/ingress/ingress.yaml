@@ -1,0 +1,50 @@
+# Prerequisites: nginx ingress controller and cert-manager must be installed.
+# Replace api.secure-statements.example.com with your actual domain.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-api-ingress
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/name: web-api
+    app.kubernetes.io/part-of: secure-statement-delivery
+  annotations:
+    # TLS
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+
+    # Security headers (supplement app-level headers set by MiddlewareExtensions.cs)
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
+
+    # Request body size limit (PDF uploads)
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+
+    # Timeouts — generous for PDF downloads
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+
+    # Rate limiting — supplements the in-process ASP.NET Core rate limiter
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+
+    # Proxy real client IP through to the application
+    nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.secure-statements.example.com
+      secretName: web-api-tls
+  rules:
+    - host: api.secure-statements.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-api
+                port:
+                  number: 8080

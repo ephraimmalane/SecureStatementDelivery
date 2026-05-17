@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: web-api-sa
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/name: web-api
+    app.kubernetes.io/part-of: secure-statement-delivery
+  annotations:
+    # IRSA — replace ACCOUNT_ID and the role name with real values.
+    # The referenced IAM role must allow s3:PutObject, s3:GetObject,
+    # s3:DeleteObject, and s3:HeadObject on the statements bucket.
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/secure-statements-web-api-role"
+# IRSA requires the projected service account token to be mounted into the pod
+# so the AWS SDK can exchange it for temporary credentials via STS.
+automountServiceAccountToken: true

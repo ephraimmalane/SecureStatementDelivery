@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Development\\\\SecureStatementDelivery\" -Recurse -Force)",
+      "Bash(Select-Object -Property FullName, PSIsContainer)",
+      "Bash(Sort-Object FullName)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(dotnet build *)",
+      "PowerShell(dotnet build *)",
+      "PowerShell(dotnet test *)",
+      "PowerShell(Get-ChildItem -Path C:\\\\Development\\\\SecureStatementDelivery -Force | Where-Object { $_.Extension -eq \".sln\" })",
+      "PowerShell(Get-ChildItem -Path C:\\\\Development\\\\SecureStatementDelivery\\\\k8s -Recurse | Where-Object { -not $_.PSIsContainer } | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Development\\\\SecureStatementDelivery\\\\\", \"\"\\) })"
+    ]
+  }
+}

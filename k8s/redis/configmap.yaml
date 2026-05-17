@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: secure-statement-delivery
+data:
+  redis.conf: |
+    # Disable disk persistence — Redis is used as a distributed cache only.
+    save ""
+    appendonly no
+
+    # Evict least-recently-used keys when maxmemory is reached.
+    maxmemory 256mb
+    maxmemory-policy allkeys-lru
+
+    # Keep connections alive.
+    tcp-keepalive 60

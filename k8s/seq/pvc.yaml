@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seq-data
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/name: seq
+    app.kubernetes.io/part-of: secure-statement-delivery
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: standard  # Uncomment and set to your cluster's storage class

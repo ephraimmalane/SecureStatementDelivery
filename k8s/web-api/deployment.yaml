@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-api
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/name: web-api
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: secure-statement-delivery
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web-api
+  # Ensure at least 1 pod is available during rolling updates.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web-api
+        app.kubernetes.io/component: api
+        app.kubernetes.io/part-of: secure-statement-delivery
+      annotations:
+        # Force pod restart when ConfigMap or Secret changes.
+        # kubectl rollout restart deployment/web-api -n secure-statements
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: web-api-sa
+      # true is required for IRSA — EKS injects AWS_WEB_IDENTITY_TOKEN_FILE and
+      # AWS_ROLE_ARN so the SDK can exchange the token for temporary S3 credentials.
+      automountServiceAccountToken: true
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        # Matches APP_UID in mcr.microsoft.com/dotnet/aspnet:10.0
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        seccompProfile:
+          type: RuntimeDefault
+      # Spread pods across nodes for high availability.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: web-api
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: web-api
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: web-api
+          image: secure-statement-delivery/web-api:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          # Load all non-sensitive config from ConfigMap, then overlay secrets.
+          envFrom:
+            - configMapRef:
+                name: web-api-config
+            - secretRef:
+                name: web-api-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          # startupProbe gives the app up to 5 minutes to become healthy on cold start
+          # (EF Core migrations, Redis connection, etc.).
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          # livenessProbe uses a TCP check so that a temporarily unreachable database
+          # does not cause needless pod restarts. If the process crashes, the port closes.
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 0
+            periodSeconds: 15
+            failureThreshold: 3
+            timeoutSeconds: 5
+          # readinessProbe calls /health which checks PostgreSQL and Redis connectivity.
+          # A pod is removed from the Service endpoints until all dependencies are healthy.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            failureThreshold: 3
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

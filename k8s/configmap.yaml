@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-api-config
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/name: web-api
+    app.kubernetes.io/part-of: secure-statement-delivery
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_HTTP_PORTS: "8080"
+
+  # JWT auth token settings
+  Jwt__Issuer: "secure-statement-delivery"
+  Jwt__Audience: "secure-statement-delivery-clients"
+  Jwt__ExpirationInMinutes: "60"
+  Jwt__RefreshTokenExpirationDays: "30"
+
+  # Download token settings
+  DownloadToken__Issuer: "statement-download"
+  DownloadToken__Audience: "statement-download-clients"
+
+  # File storage — S3 provider; files are stored in and served from the configured bucket.
+  # Replace BucketName and Region with real values before applying to the cluster.
+  Storage__Provider: "S3"
+  Storage__S3__BucketName: "secure-statements-prod"
+  Storage__S3__Region: "us-east-1"
+  Storage__S3__PresignedUrlExpiryMinutes: "5"
+
+  # Serilog — override Dev settings; Seq URL points to in-cluster service
+  Serilog__Using__0: "Serilog.Sinks.Console"
+  Serilog__Using__1: "Serilog.Sinks.Seq"
+  Serilog__MinimumLevel__Default: "Information"
+  Serilog__MinimumLevel__Override__Microsoft: "Warning"
+  Serilog__MinimumLevel__Override__Microsoft.EntityFrameworkCore: "Warning"
+  Serilog__WriteTo__0__Name: "Console"
+  Serilog__WriteTo__1__Name: "Seq"
+  Serilog__WriteTo__1__Args__ServerUrl: "http://seq:5341"
+  Serilog__Enrich__0: "FromLogContext"
+  Serilog__Enrich__1: "WithMachineName"
+  Serilog__Enrich__2: "WithThreadId"
+  Serilog__Properties__Application: "SecureStatementDelivery"

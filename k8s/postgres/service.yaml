@@ -1,0 +1,34 @@
+# Headless service — stable DNS for the StatefulSet pod (postgres-0.postgres-headless).
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-headless
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: secure-statement-delivery
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+# ClusterIP service — stable virtual IP that the application uses.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: secure-statement-delivery
+spec:
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432

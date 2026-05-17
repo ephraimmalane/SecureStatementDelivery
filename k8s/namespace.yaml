@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: secure-statements
+  labels:
+    kubernetes.io/metadata.name: secure-statements
+    environment: production
+    app.kubernetes.io/part-of: secure-statement-delivery
