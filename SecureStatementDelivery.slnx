@@ -11,8 +11,15 @@
     <Project Path="src/SharedKernel/SharedKernel.csproj" />
     <Project Path="src/Web.Api/Web.Api.csproj" />
   </Folder>
+  <Folder Name="/aspire/">
+    <Project Path="aspire/SecureStatementDelivery.AppHost/SecureStatementDelivery.AppHost.csproj" />
+    <Project Path="aspire/SecureStatementDelivery.ServiceDefaults/SecureStatementDelivery.ServiceDefaults.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ArchitectureTests/ArchitectureTests.csproj" />
+    <Project Path="tests/Domain.UnitTests/Domain.UnitTests.csproj" />
+    <Project Path="tests/Infrastructure.UnitTests/Infrastructure.UnitTests.csproj" />
+    <Project Path="tests/IntegrationTests/IntegrationTests.csproj" />
   </Folder>
   <Project Path="docker-compose.dcproj">
     <Build />

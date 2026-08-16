@@ -7,5 +7,6 @@ public enum AuditAction
     DownloadLinkGenerated = 3,
     StatementDownloaded = 4,
     DownloadFailed = 5,
-    UnauthorizedAccess = 6
+    UnauthorizedAccess = 6,
+    DownloadDenied = 7
 }

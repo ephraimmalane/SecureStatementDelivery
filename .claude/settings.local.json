@@ -9,7 +9,21 @@
       "PowerShell(dotnet build *)",
       "PowerShell(dotnet test *)",
       "PowerShell(Get-ChildItem -Path C:\\\\Development\\\\SecureStatementDelivery -Force | Where-Object { $_.Extension -eq \".sln\" })",
-      "PowerShell(Get-ChildItem -Path C:\\\\Development\\\\SecureStatementDelivery\\\\k8s -Recurse | Where-Object { -not $_.PSIsContainer } | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Development\\\\SecureStatementDelivery\\\\\", \"\"\\) })"
+      "PowerShell(Get-ChildItem -Path C:\\\\Development\\\\SecureStatementDelivery\\\\k8s -Recurse | Where-Object { -not $_.PSIsContainer } | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Development\\\\SecureStatementDelivery\\\\\", \"\"\\) })",
+      "PowerShell(dotnet build src/Web.Api/Web.Api.csproj -nologo -clp:NoSummary --output \"$env:TEMP/ssd-buildcheck\" 2>&1 | Select-String -Pattern \"error |Error\\\\\\(s\\\\\\)\" | Select-Object -First 30)",
+      "Bash(docker exec *)",
+      "Bash(dotnet test *)",
+      "Bash(dotnet sln *)",
+      "Bash(python -c \"import json;json.load\\(open\\('keycloak/realm-export.json'\\)\\);print\\('realm-export.json valid JSON'\\)\")",
+      "Bash(powershell *)",
+      "Bash(dotnet nuget *)",
+      "Bash(dotnet package *)",
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/microsoft.openapi/index.json\")",
+      "Bash(sed -n '30,40p' docker-compose.yml)",
+      "Bash(sed -n '10,16p' .env.example)",
+      "Bash(sed -n '44,50p' k8s/secret.yaml)",
+      "Bash(sed -n '48,60p' k8s/keycloak/deployment.yaml)",
+      "Bash(sed -n '14,24p' aspire/SecureStatementDelivery.AppHost/AppHost.cs)"
     ]
   }
 }

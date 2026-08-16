@@ -20,6 +20,12 @@ public static class MiddlewareExtensions
             context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
             context.Response.Headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()";
             context.Response.Headers["Cache-Control"] = "no-store";
+            // HSTS: tell browsers to enforce HTTPS for 1 year, including subdomains.
+            // Safe to set here even though TLS terminates at the Nginx Ingress —
+            // the header travels to the browser which is what matters.
+            context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload";
+            // CSP: this is a pure JSON API — block all content loading and framing.
+            context.Response.Headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
             await next();
         });
 

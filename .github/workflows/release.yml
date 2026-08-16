@@ -1,0 +1,111 @@
+# ============================================================
+# RELEASE / CD — build + push the web-api image, then update the
+# Kubernetes manifests so Argo CD pull-syncs the new version.
+#
+# Trigger: push a semver tag, e.g.
+#   git tag v1.2.0 && git push origin v1.2.0
+#
+# Flow:
+#   1. Build & push the image to ECR, tagged with the release version,
+#      the commit SHA, and (for the default channel) `latest`.
+#   2. Rewrite the `image:` line in the Deployment and migration Job to the
+#      immutable version tag and commit it back to main ([skip ci]).
+#   3. Argo CD (k8s/argocd/application.yaml) detects the manifest change and
+#      syncs: its PreSync hook runs web-api-migrate first, then rolls out the
+#      Deployment. See docs/runbook-cicd.md.
+#
+# Auth: GitHub OIDC -> an AWS IAM role (no static keys in the repo), matching
+# the IRSA model the workloads already use. Configure these repo-level values:
+#   Variables (Settings > Secrets and variables > Actions > Variables):
+#     AWS_REGION       e.g. us-east-1
+#     ECR_REPOSITORY   e.g. secure-statement-delivery/web-api
+#   Secrets:
+#     AWS_DEPLOY_ROLE_ARN  arn:aws:iam::<acct>:role/github-actions-ecr-push
+# ============================================================
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag to build (e.g. v1.2.0)"
+        required: true
+  push:
+    tags:
+      - "v*"
+
+# OIDC token for AWS + write access to commit the manifest bump back.
+permissions:
+  id-token: write
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Need full history + a writable token to commit the manifest bump.
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve version
+        id: ver
+        run: |
+          REF="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${REF#v}"          # strip leading v -> 1.2.0
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$REF" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Web.Api/Dockerfile
+          push: true
+          provenance: false
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ steps.ver.outputs.version }}
+            ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Pin the deployed manifests to the immutable version tag. Argo CD watches
+      # the repo and syncs the change; the migration Job (PreSync) runs first.
+      - name: Bump image tag in manifests
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ steps.ver.outputs.version }}
+        run: |
+          sed -i -E "s|^(\s*image:\s*).*web-api:.*$|\1${IMAGE}|" \
+            k8s/web-api/deployment.yaml \
+            k8s/web-api/migration-job.yaml
+
+      - name: Commit manifest bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "No manifest changes to commit."
+            exit 0
+          fi
+          git add k8s/web-api/deployment.yaml k8s/web-api/migration-job.yaml
+          git commit -m "release: web-api ${{ steps.ver.outputs.tag }} [skip ci]"
+          git push origin HEAD:main

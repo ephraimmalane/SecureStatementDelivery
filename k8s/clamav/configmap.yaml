@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clamav-config
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/name: clamav
+    app.kubernetes.io/part-of: secure-statement-delivery
+data:
+  clamd.conf: |
+    # Listen on TCP for nClam INSTREAM scanning.
+    TCPSocket 3310
+    TCPAddr 0.0.0.0
+    DatabaseDirectory /var/lib/clamav
+    # Must clear Storage__MaxUploadBytes (50 MB) with headroom.
+    StreamMaxLength 64M
+    MaxFileSize 64M
+    MaxScanSize 256M
+    MaxRecursion 16
+    MaxFiles 10000
+    LogTime yes

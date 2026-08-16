@@ -16,6 +16,10 @@ public static class DownloadTokenErrors
         "DownloadTokens.TokenAlreadyUsed",
         "This download link has already been used. Single-use links cannot be redeemed twice.");
 
+    public static readonly Error IpAddressMismatch = Error.Failure(
+        "DownloadTokens.IpAddressMismatch",
+        "This download link was generated for a different IP address and cannot be used from your current location.");
+
     public static Error NotFound(Guid tokenId) => Error.NotFound(
         "DownloadTokens.NotFound",
         $"Download token '{tokenId}' was not found.");

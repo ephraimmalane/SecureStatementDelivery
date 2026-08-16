@@ -1,0 +1,6 @@
+# EF Core generates the files in this folder (migrations, designer, model snapshot).
+# They are not hand-written and must not be held to the repository's code-style /
+# analysis rules, which would otherwise fail the build via TreatWarningsAsErrors.
+[*.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none

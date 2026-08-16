@@ -1,0 +1,63 @@
+# ============================================================
+# ARGO CD APPLICATION — declarative, pull-based delivery of the platform.
+#
+# Apply once (bootstrap) into the Argo CD control-plane namespace:
+#   kubectl apply -f k8s/argocd/application.yaml
+#
+# Thereafter Argo CD watches the `k8s/` path on `main` and keeps the cluster in
+# sync. The Release workflow (.github/workflows/release.yml) bumps the image tag
+# in the manifests; Argo detects the commit and syncs automatically.
+#
+# Ordering is handled by hooks already present in the manifests:
+#   - k8s/web-api/migration-job.yaml carries `argocd.argoproj.io/hook: PreSync`,
+#     so EF Core migrations run to completion BEFORE the Deployment rolls out.
+#
+# Prerequisites in the cluster: Argo CD, nginx-ingress, cert-manager,
+# External Secrets Operator, and (for monitoring rules) kube-prometheus-stack.
+# See docs/runbook-cicd.md.
+# ============================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: secure-statement-delivery
+  namespace: argocd
+  # Keep the app until explicitly deleted; prevents accidental cascade removal.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    app.kubernetes.io/part-of: secure-statement-delivery
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ephraim-malane/SecureStatementDelivery.git # TODO: set to your repo URL
+    targetRevision: main
+    path: k8s
+    directory:
+      recurse: true
+      # Do not let Argo manage itself or re-apply the plain-base64 secret
+      # template (production secrets come from External Secrets Operator).
+      exclude: "{argocd/*,secret.yaml}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: secure-statements
+  syncPolicy:
+    automated:
+      prune: true        # delete resources removed from Git
+      selfHeal: true     # revert manual drift back to Git state
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 3m
+  # Tolerate benign drift on autoscaled / externally-managed fields.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas        # owned by the HPA, not Git

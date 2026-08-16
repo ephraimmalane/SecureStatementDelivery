@@ -18,12 +18,16 @@ metadata:
     nginx.ingress.kubernetes.io/configuration-snippet: |
       more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
 
-    # Request body size limit (PDF uploads)
+    # Request body size limit — matches Kestrel's MaxRequestBodySize and the domain validator (50 MB).
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
 
-    # Timeouts — generous for PDF downloads
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    # Upload timeout: 50 MB at a minimum enterprise upload speed of 10 Mbps takes ~40 s.
+    # 300 s accommodates 1 Mbps connections without hanging indefinitely on stalled transfers.
+    # Download timeout: local-storage path streams through the API; S3 path is a presigned
+    # redirect so the API sends only a 302 — no data transfer time involved.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
 
     # Rate limiting — supplements the in-process ASP.NET Core rate limiter
     nginx.ingress.kubernetes.io/limit-rps: "20"

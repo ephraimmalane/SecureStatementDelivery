@@ -1,0 +1,24 @@
+# Shared scratch space for in-progress resumable (TUS) uploads.
+# Chunks land here before being promoted to permanent storage (S3) on completion.
+#
+# ReadWriteMany is REQUIRED for multi-replica deployments: a resumable upload's chunks
+# and its progress/resume lookups can be served by any pod, so all pods must see the same
+# directory. Use a shared filesystem storage class:
+#   AKS: azurefile-csi   |   EKS: efs-sc   |   GKE: filestore-sc
+#
+# If you run a single replica (or pin uploads with sticky sessions), ReadWriteOnce is enough.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: web-api-uploads-temp
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/name: web-api
+    app.kubernetes.io/part-of: secure-statement-delivery
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  # storageClassName: azurefile-csi   # Uncomment and set to your cluster's RWX class

@@ -53,6 +53,36 @@ internal sealed class CacheService(
         }
     }
 
+    public async Task<byte[]?> GetBytesAsync(string key, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await cache.GetAsync(key, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Cache GET (bytes) failed for key {Key}. Continuing without cache.", key);
+            return null;
+        }
+    }
+
+    public async Task SetBytesAsync(string key, byte[] value, TimeSpan expiry, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var options = new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = expiry
+            };
+
+            await cache.SetAsync(key, value, options, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Cache SET (bytes) failed for key {Key}. Continuing without cache.", key);
+        }
+    }
+
     public async Task RemoveAsync(string key, CancellationToken cancellationToken = default)
     {
         try

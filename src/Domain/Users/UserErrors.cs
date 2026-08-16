@@ -27,4 +27,8 @@ public static class UserErrors
     public static readonly Error InvalidRefreshToken = Error.Failure(
         "Users.InvalidRefreshToken",
         "The refresh token is invalid or has expired.");
+
+    public static readonly Error InvalidIdNumber = Error.Problem(
+        "Users.InvalidIdNumber",
+        "The South African ID number is not valid.");
 }

@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/part-of: secure-statement-delivery
+data:
+  realm-export.json: |
+    {
+      "realm": "secure-statements",
+      "enabled": true,
+      "displayName": "Secure Statement Delivery",
+      "accessTokenLifespan": 3600,
+      "ssoSessionMaxLifespan": 2592000,
+      "revokeRefreshToken": true,
+      "refreshTokenMaxReuse": 0,
+      "roles": {
+        "realm": [
+          {
+            "name": "admin",
+            "description": "System administrator — full upload, read, revoke, and audit access"
+          },
+          {
+            "name": "customer",
+            "description": "Customer — read own statements and download via signed links"
+          },
+          {
+            "name": "statement-ingest",
+            "description": "Machine ingestion — the statement-generation pipeline pushes statements (no human/customer access)"
+          }
+        ]
+      },
+      "clients": [
+        {
+          "clientId": "secure-statement-delivery",
+          "name": "Secure Statement Delivery API",
+          "enabled": true,
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "secret": "${KEYCLOAK_CLIENT_SECRET}",
+          "standardFlowEnabled": false,
+          "implicitFlowEnabled": false,
+          "directAccessGrantsEnabled": true,
+          "serviceAccountsEnabled": true,
+          "authorizationServicesEnabled": false,
+          "defaultClientScopes": ["basic", "acr", "web-origins", "profile", "roles", "email"],
+          "optionalClientScopes": ["offline_access"],
+          "protocolMappers": [
+            {
+              "name": "audience-mapper",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-audience-mapper",
+              "consentRequired": false,
+              "config": {
+                "included.client.audience": "secure-statement-delivery",
+                "id.token.claim": "false",
+                "access.token.claim": "true"
+              }
+            }
+          ]
+        },
+        {
+          "clientId": "statement-generator",
+          "name": "Statement Generation Pipeline (M2M ingestion)",
+          "description": "Confidential service-account client. Obtains a token via client_credentials and pushes statements to POST /statements/ingest.",
+          "enabled": true,
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "secret": "${KEYCLOAK_INGEST_CLIENT_SECRET}",
+          "standardFlowEnabled": false,
+          "implicitFlowEnabled": false,
+          "directAccessGrantsEnabled": false,
+          "serviceAccountsEnabled": true,
+          "authorizationServicesEnabled": false,
+          "defaultClientScopes": ["basic", "acr", "web-origins", "profile", "roles", "email"],
+          "protocolMappers": [
+            {
+              "name": "audience-mapper",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-audience-mapper",
+              "consentRequired": false,
+              "config": {
+                "included.client.audience": "secure-statement-delivery",
+                "id.token.claim": "false",
+                "access.token.claim": "true"
+              }
+            }
+          ]
+        }
+      ],
+      "users": [
+        {
+          "username": "service-account-statement-generator",
+          "enabled": true,
+          "serviceAccountClientId": "statement-generator",
+          "realmRoles": ["statement-ingest"]
+        }
+      ]
+    }
