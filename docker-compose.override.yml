@@ -3,14 +3,23 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_HTTP_PORTS=8080
-      # Override localhost URLs from appsettings.Development.json with Docker service names
-      - ConnectionStrings__Database=Host=postgres;Port=5432;Database=secure_statements;Username=postgres;Password=postgres;Include Error Detail=true
+      # All secrets come from .env (gitignored). Copy .env.example → .env and fill in values.
+      - ConnectionStrings__Database=Host=postgres;Port=5432;Database=secure_statements;Username=postgres;Password=${POSTGRES_PASSWORD};Include Error Detail=true
       - ConnectionStrings__Redis=redis:6379
       - Serilog__WriteTo__1__Args__ServerUrl=http://seq:5341
+      - Keycloak__BaseUrl=http://keycloak:8080
+      - Keycloak__Realm=secure-statements
+      - Keycloak__ClientId=secure-statement-delivery
+      - Keycloak__ClientSecret=${KEYCLOAK_CLIENT_SECRET}
+      - Keycloak__AdminUsername=admin
+      - Keycloak__AdminPassword=${KEYCLOAK_ADMIN_PASSWORD}
+      - DownloadToken__Secret=${DOWNLOAD_TOKEN_SECRET}
     ports:
       - "5000:8080"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy

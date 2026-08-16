@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-scripts
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: secure-statement-delivery
+data:
+  # Runs once on first boot (empty data directory).
+  # Creates the keycloak database alongside the app database.
+  01-create-keycloak-db.sql: |
+    SELECT 'CREATE DATABASE keycloak'
+    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'keycloak')\gexec
+
+    \c keycloak
+    GRANT ALL PRIVILEGES ON DATABASE keycloak TO app_user;

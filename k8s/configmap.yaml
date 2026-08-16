@@ -10,29 +10,64 @@ data:
   ASPNETCORE_ENVIRONMENT: "Production"
   ASPNETCORE_HTTP_PORTS: "8080"
 
-  # JWT auth token settings
-  Jwt__Issuer: "secure-statement-delivery"
-  Jwt__Audience: "secure-statement-delivery-clients"
-  Jwt__ExpirationInMinutes: "60"
-  Jwt__RefreshTokenExpirationDays: "30"
+  # Trust X-Forwarded-* only from the ingress-controller pod network, so client IP / scheme can't
+  # be spoofed by anything else that reaches the pod. Replace with your cluster's pod CIDR
+  # (e.g. the ingress-nginx pods' range). Without this set, forwarded headers are trusted from any
+  # source (relying solely on the NetworkPolicy default-deny).
+  ForwardedHeaders__KnownNetworks__0: "10.0.0.0/8"
 
-  # Download token settings
+  # Keycloak — replace KEYCLOAK_HOSTNAME with your public Keycloak hostname (e.g. auth.your-domain.com).
+  # The web-api uses this to discover the JWKS endpoint for JWT validation.
+  Keycloak__BaseUrl: "https://KEYCLOAK_HOSTNAME"
+  Keycloak__Realm: "secure-statements"
+  Keycloak__ClientId: "secure-statement-delivery"
+  Keycloak__AdminUsername: "admin"
+
+  # Download token settings (signed by the API, not Keycloak)
   DownloadToken__Issuer: "statement-download"
   DownloadToken__Audience: "statement-download-clients"
 
-  # File storage — S3 provider; files are stored in and served from the configured bucket.
-  # Replace BucketName and Region with real values before applying to the cluster.
+  # File storage — S3 provider; replace BucketName and Region with real values.
   Storage__Provider: "S3"
   Storage__S3__BucketName: "secure-statements-prod"
   Storage__S3__Region: "us-east-1"
   Storage__S3__PresignedUrlExpiryMinutes: "5"
+  # Encryption at rest: SSE-KMS with a customer-managed key. Replace with your key ARN.
+  # The pod's IAM role (IRSA) must have kms:GenerateDataKey/kms:Decrypt on this key.
+  Storage__S3__KmsKeyId: "arn:aws:kms:us-east-1:000000000000:key/REPLACE-ME"
+  # WORM retention. The bucket MUST be created with Object Lock enabled. Compliance mode
+  # makes objects immutable for everyone (incl. root) until retention elapses (~7 years).
+  Storage__S3__UseObjectLock: "true"
+  Storage__S3__ObjectLockMode: "Compliance"
+  Storage__S3__RetentionDays: "2555"
+  # Max accepted upload size in bytes (50 MB). Single source of truth for Kestrel, the
+  # multipart pipeline, the validator, and the resumable (TUS) limit. If you raise this,
+  # also raise nginx.ingress proxy-body-size in k8s/ingress/ingress.yaml to match.
+  Storage__MaxUploadBytes: "52428800"
+  # Resumable-upload scratch dir — must point at the shared RWX volume mount.
+  Storage__ResumableUploadTempPath: "/uploads-temp"
 
-  # Serilog — override Dev settings; Seq URL points to in-cluster service
+  # Consolidated (multi-month) statement tuning: range cap, cache TTL (minutes), and the max merged
+  # size that will be cached in Redis (larger merges are streamed but not cached).
+  Consolidation__MaxMonths: "12"
+  Consolidation__CacheTtlMinutes: "60"
+  Consolidation__MaxCacheableBytes: "20971520"
+
+  # Anti-malware scanning via ClamAV (clamd). Every uploaded PDF is streamed to clamd before it is
+  # encrypted/stored; an unreachable scanner fails the upload closed. clamd's StreamMaxLength must
+  # be >= Storage__MaxUploadBytes (see k8s/clamav).
+  ClamAv__Enabled: "true"
+  ClamAv__Host: "clamav"
+  ClamAv__Port: "3310"
+  ClamAv__MaxStreamSizeBytes: "67108864"
+
+  # Serilog
   Serilog__Using__0: "Serilog.Sinks.Console"
   Serilog__Using__1: "Serilog.Sinks.Seq"
   Serilog__MinimumLevel__Default: "Information"
   Serilog__MinimumLevel__Override__Microsoft: "Warning"
   Serilog__MinimumLevel__Override__Microsoft.EntityFrameworkCore: "Warning"
+  Serilog__MinimumLevel__Override__System.Net.Http: "Warning"
   Serilog__WriteTo__0__Name: "Console"
   Serilog__WriteTo__1__Name: "Seq"
   Serilog__WriteTo__1__Args__ServerUrl: "http://seq:5341"

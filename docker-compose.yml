@@ -8,11 +8,43 @@ services:
     ports:
       - 5000:8080
       - 5001:8081
+    environment:
+      - ClamAv__Enabled=true
+      - ClamAv__Host=clamav
+      - ClamAv__Port=3310
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: keycloak
+    # start-dev uses embedded H2 — no postgres dependency needed for local dev.
+    # --import-realm imports keycloak/realm-export.json on first boot.
+    # Keycloak 24+ substitutes ${VAR} references in the realm JSON from environment variables.
+    command: start-dev --import-realm
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
+      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET}
+      # M2M ingestion (statement-generator) client secret; falls back to the API client secret in dev.
+      - KEYCLOAK_INGEST_CLIENT_SECRET=${KEYCLOAK_INGEST_CLIENT_SECRET:-${KEYCLOAK_CLIENT_SECRET}}
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import
+    ports:
+      - 8080:8080
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
 
   postgres:
     image: postgres:17
@@ -20,7 +52,7 @@ services:
     environment:
       - POSTGRES_DB=secure_statements
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - ./.containers/db:/var/lib/postgresql/data
     ports:
@@ -49,3 +81,19 @@ services:
       - ACCEPT_EULA=Y
     ports:
       - 8081:80
+
+  clamav:
+    image: clamav/clamav:1.4
+    container_name: clamav
+    # Raise StreamMaxLength above the 50 MB upload limit (image default is 25 MB).
+    volumes:
+      - ./clamav/clamd.conf:/etc/clamav/clamd.conf:ro
+    ports:
+      - 3310:3310
+    healthcheck:
+      # clamdcheck.sh PINGs clamd; only healthy once the signature DB has loaded (~1-2 min first run).
+      test: ["CMD-SHELL", "clamdcheck.sh || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s

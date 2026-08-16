@@ -1,0 +1,24 @@
+# The app namespace is default-deny (see k8s/network-policy.yaml). This opens exactly one path:
+# Prometheus in the `monitoring` namespace may scrape the web-api pods' /metrics on :8080.
+# Apply into secure-statements alongside the other network policies.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-to-web-api
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/part-of: secure-statement-delivery
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: web-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 8080
+          protocol: TCP

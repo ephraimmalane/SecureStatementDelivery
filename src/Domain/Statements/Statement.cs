@@ -1,11 +1,22 @@
+using System.Text.RegularExpressions;
 using Domain.Statements.Events;
 using Domain.Users;
 using SharedKernel;
 
 namespace Domain.Statements;
 
-public sealed class Statement : Entity
+public sealed partial class Statement : Entity
 {
+    // Canonical statement period: four-digit year, two-digit month 01-12 (e.g. 2024-01).
+    [GeneratedRegex(@"^\d{4}-(0[1-9]|1[0-2])$")]
+    private static partial Regex PeriodFormat();
+
+    // Authoritative period invariant. Every write path (multipart and resumable upload)
+    // funnels through Create, so enforcing the format here guarantees the read-side
+    // equality filter in the list query can never silently miss a statement.
+    public static bool IsValidPeriod(string? period) =>
+        period is not null && PeriodFormat().IsMatch(period.Trim());
+
     private Statement() { }
 
     public Guid Id { get; private set; }
@@ -17,6 +28,13 @@ public sealed class Statement : Entity
     public long FileSizeBytes { get; private set; }
     public string Period { get; private set; } = string.Empty;
     public string Description { get; private set; } = string.Empty;
+    public bool IsPasswordProtected { get; private set; }
+
+    // Optional caller-supplied key that makes ingestion idempotent: a redelivered upload
+    // (retried webhook / double-submit) carrying the same key is deduplicated rather than
+    // creating a second statement. Enforced by a unique index in the persistence config.
+    public string? IdempotencyKey { get; private set; }
+
     public StatementStatus Status { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime? RevokedAt { get; private set; }
@@ -27,7 +45,7 @@ public sealed class Statement : Entity
 
     public bool IsActive => Status == StatementStatus.Active;
 
-    public static Statement Create(
+    public static Result<Statement> Create(
         Guid customerId,
         Guid uploadedByAdminId,
         string originalFileName,
@@ -35,8 +53,19 @@ public sealed class Statement : Entity
         string contentType,
         long fileSizeBytes,
         string period,
-        string description)
+        string description,
+        bool isPasswordProtected = false,
+        string? idempotencyKey = null)
     {
+        // Normalise and validate the period before the entity exists, so a malformed value
+        // can never be persisted regardless of which upload path produced it.
+        string normalizedPeriod = period?.Trim() ?? string.Empty;
+
+        if (!IsValidPeriod(normalizedPeriod))
+        {
+            return Result.Failure<Statement>(StatementErrors.InvalidPeriodFormat);
+        }
+
         var statement = new Statement
         {
             Id = Guid.NewGuid(),
@@ -46,8 +75,10 @@ public sealed class Statement : Entity
             StoragePath = storagePath,
             ContentType = contentType,
             FileSizeBytes = fileSizeBytes,
-            Period = period,
+            Period = normalizedPeriod,
             Description = description,
+            IsPasswordProtected = isPasswordProtected,
+            IdempotencyKey = string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim(),
             Status = StatementStatus.Active,
             CreatedAt = DateTime.UtcNow
         };

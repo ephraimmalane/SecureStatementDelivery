@@ -9,8 +9,6 @@ namespace Application.Abstractions.Data;
 public interface IApplicationDbContext
 {
     DbSet<User> Users { get; }
-    DbSet<Role> Roles { get; }
-    DbSet<RefreshToken> RefreshTokens { get; }
     DbSet<Statement> Statements { get; }
     DbSet<DownloadToken> DownloadTokens { get; }
     DbSet<DownloadAuditLog> DownloadAuditLogs { get; }

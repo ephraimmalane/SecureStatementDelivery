@@ -1,0 +1,87 @@
+# ============================================================
+# PROMETHEUS ALERT RULES + SLO RECORDING RULES
+# Requires the Prometheus Operator (kube-prometheus-stack). The web-api pods already expose
+# /metrics (OpenTelemetry Prometheus exporter) and carry the prometheus.io/scrape annotations.
+#
+# Metric names follow the OTel→Prometheus convention (dots become underscores, counters get
+# a _total suffix). Verify against your scrape output; histogram bucket names in particular can
+# vary by exporter version (http_server_request_duration_seconds_bucket).
+# ============================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: web-api-rules
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/part-of: secure-statement-delivery
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: web-api.slo
+      interval: 30s
+      rules:
+        # --- SLO recording rules: availability and latency over a 5m window ---
+        - record: job:web_api_request_error_ratio:5m
+          expr: |
+            sum(rate(http_server_request_duration_seconds_count{job="web-api",http_response_status_code=~"5.."}[5m]))
+            /
+            sum(rate(http_server_request_duration_seconds_count{job="web-api"}[5m]))
+        - record: job:web_api_request_latency_p95:5m
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(http_server_request_duration_seconds_bucket{job="web-api"}[5m])) by (le))
+
+    - name: web-api.alerts
+      rules:
+        # SLO: 99.5% of requests succeed. Page when the error budget burns fast.
+        - alert: WebApiHighErrorRate
+          expr: job:web_api_request_error_ratio:5m > 0.005
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "web-api 5xx error ratio above SLO (0.5%)"
+            description: "5xx ratio is {{ $value | humanizePercentage }} over the last 5m."
+
+        # SLO: p95 latency < 500ms (excludes large streamed downloads which use redirects).
+        - alert: WebApiHighLatency
+          expr: job:web_api_request_latency_p95:5m > 0.5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "web-api p95 latency above 500ms"
+            description: "p95 is {{ $value }}s over the last 5m."
+
+        # Outbox health — the earliest signal that domain events (incl. customer notifications)
+        # are not being delivered. Any failure in 10m warns; sustained failure pages.
+        - alert: OutboxDispatchFailing
+          expr: increase(outbox_failed_total{job="web-api"}[10m]) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Outbox messages are failing to dispatch"
+            description: "{{ $value }} outbox messages errored in the last 10m."
+
+        # A spike in rejected uploads can indicate a misconfigured upstream or an attack.
+        - alert: HighUploadRejectionRate
+          expr: |
+            sum(rate(statements_upload_rejected_total{job="web-api"}[5m]))
+            > sum(rate(statements_uploaded_total{job="web-api"}[5m]))
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Upload rejections exceed successful uploads"
+            description: "More uploads are being rejected than accepted over the last 5m."
+
+        # Scrape target down / pod not serving.
+        - alert: WebApiTargetDown
+          expr: up{job="web-api"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "web-api scrape target is down"
+            description: "Prometheus cannot scrape {{ $labels.instance }}."

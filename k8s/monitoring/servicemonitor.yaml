@@ -1,0 +1,33 @@
+# ============================================================
+# OPERATOR PATH (alternative to the standalone Prometheus in this folder)
+# If your cluster already runs kube-prometheus-stack (Prometheus Operator), apply this ServiceMonitor
+# instead of prometheus.yaml — the operator will scrape web-api /metrics and evaluate the rules in
+# prometheus-rules.yaml. Do NOT apply both this and the standalone prometheus.yaml.
+#
+# The `release` label must match your kube-prometheus-stack Helm release so the operator selects it.
+# ============================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: web-api
+  namespace: secure-statements
+  labels:
+    app.kubernetes.io/name: web-api
+    app.kubernetes.io/part-of: secure-statement-delivery
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - secure-statements
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      # Force job="web-api" so it matches the recording/alert rules in prometheus-rules.yaml.
+      relabelings:
+        - action: replace
+          targetLabel: job
+          replacement: web-api

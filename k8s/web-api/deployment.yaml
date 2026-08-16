@@ -89,7 +89,8 @@ spec:
               drop:
                 - ALL
           # startupProbe gives the app up to 5 minutes to become healthy on cold start
-          # (EF Core migrations, Redis connection, etc.).
+          # (Redis connection, JWKS discovery, etc.). Schema migrations run separately in the
+          # web-api-migrate Job (see migration-job.yaml), not on pod startup.
           startupProbe:
             httpGet:
               path: /health
@@ -119,6 +120,13 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            # Writable scratch space for resumable (TUS) upload chunks. Required because
+            # readOnlyRootFilesystem is true — the app cannot write under its own directory.
+            - name: uploads-temp
+              mountPath: /uploads-temp
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: uploads-temp
+          persistentVolumeClaim:
+            claimName: web-api-uploads-temp

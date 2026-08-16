@@ -1,0 +1,243 @@
+# ============================================================
+# STANDALONE PROMETHEUS (no operator required)
+# Scrapes the web-api pods via the prometheus.io/scrape annotations they already carry, and loads
+# the same recording + alert rules as the operator PrometheusRule. Minimal by design: single
+# replica, emptyDir storage (swap for a PVC in production for durable history).
+# ============================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: secure-statement-delivery
+---
+# Pod service discovery needs read access to pods/endpoints/services/nodes cluster-wide.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: secure-statement-delivery
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/metrics", "services", "endpoints", "pods"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: secure-statement-delivery
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: secure-statement-delivery
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+
+    rule_files:
+      - /etc/prometheus/alerts.yml
+
+    scrape_configs:
+      # Annotation-based discovery of the web-api pods in the app namespace. The pods already
+      # carry prometheus.io/scrape, prometheus.io/path and prometheus.io/port.
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [secure-statements]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          # job = the app name label, so web-api pods land on job="web-api" (what the rules expect).
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            action: replace
+            target_label: job
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+  # Same recording + alert rules as k8s/monitoring/prometheus-rules.yaml (operator path), in the
+  # native Prometheus rules-file format so the standalone server evaluates them too.
+  alerts.yml: |
+    groups:
+      - name: web-api.slo
+        interval: 30s
+        rules:
+          - record: job:web_api_request_error_ratio:5m
+            expr: |
+              sum(rate(http_server_request_duration_seconds_count{job="web-api",http_response_status_code=~"5.."}[5m]))
+              /
+              sum(rate(http_server_request_duration_seconds_count{job="web-api"}[5m]))
+          - record: job:web_api_request_latency_p95:5m
+            expr: |
+              histogram_quantile(0.95,
+                sum(rate(http_server_request_duration_seconds_bucket{job="web-api"}[5m])) by (le))
+      - name: web-api.alerts
+        rules:
+          - alert: WebApiHighErrorRate
+            expr: job:web_api_request_error_ratio:5m > 0.005
+            for: 10m
+            labels:
+              severity: critical
+            annotations:
+              summary: "web-api 5xx error ratio above SLO (0.5%)"
+              description: "5xx ratio is {{ $value | humanizePercentage }} over the last 5m."
+          - alert: WebApiHighLatency
+            expr: job:web_api_request_latency_p95:5m > 0.5
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "web-api p95 latency above 500ms"
+              description: "p95 is {{ $value }}s over the last 5m."
+          - alert: OutboxDispatchFailing
+            expr: increase(outbox_failed_total{job="web-api"}[10m]) > 0
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Outbox messages are failing to dispatch"
+              description: "{{ $value }} outbox messages errored in the last 10m."
+          - alert: HighUploadRejectionRate
+            expr: |
+              sum(rate(statements_upload_rejected_total{job="web-api"}[5m]))
+              > sum(rate(statements_uploaded_total{job="web-api"}[5m]))
+            for: 15m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Upload rejections exceed successful uploads"
+              description: "More uploads are being rejected than accepted over the last 5m."
+          - alert: WebApiTargetDown
+            expr: up{job="web-api"} == 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "web-api scrape target is down"
+              description: "Prometheus cannot scrape {{ $labels.instance }}."
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: secure-statement-delivery
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prometheus
+        app.kubernetes.io/part-of: secure-statement-delivery
+    spec:
+      serviceAccountName: prometheus
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.54.1
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=15d
+          ports:
+            - name: http
+              containerPort: 9090
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: data
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        # Minimal: ephemeral. Swap for a PersistentVolumeClaim in production for durable history.
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: secure-statement-delivery
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+      protocol: TCP

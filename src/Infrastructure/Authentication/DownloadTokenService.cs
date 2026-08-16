@@ -44,14 +44,13 @@ internal sealed class DownloadTokenService(IOptions<DownloadTokenOptions> option
     {
         try
         {
-            string secretKey = options.Value.Secret;
-            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
-
             var handler = new JsonWebTokenHandler();
 
             TokenValidationResult result = handler.ValidateTokenAsync(token, new TokenValidationParameters
             {
-                IssuerSigningKey = securityKey,
+                // Accept the current key plus any key still inside its rotation overlap window, so a
+                // link signed before a key rotation keeps validating until its TTL elapses.
+                IssuerSigningKeys = GetValidationKeys(),
                 ValidIssuer = options.Value.Issuer,
                 ValidAudience = options.Value.Audience,
                 ClockSkew = TimeSpan.Zero
@@ -87,5 +86,20 @@ internal sealed class DownloadTokenService(IOptions<DownloadTokenOptions> option
     {
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(rawToken));
         return Convert.ToHexString(hash);
+    }
+
+    // Current signing key first, then any previous keys still in their overlap window. HS256 tokens
+    // carry no `kid`, so the handler tries every key until one verifies the signature.
+    private IEnumerable<SecurityKey> GetValidationKeys()
+    {
+        yield return new SymmetricSecurityKey(Encoding.UTF8.GetBytes(options.Value.Secret));
+
+        foreach (string previous in options.Value.PreviousSecrets)
+        {
+            if (!string.IsNullOrWhiteSpace(previous))
+            {
+                yield return new SymmetricSecurityKey(Encoding.UTF8.GetBytes(previous));
+            }
+        }
     }
 }
