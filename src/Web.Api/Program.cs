@@ -23,8 +23,13 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 // OTEL_EXPORTER_OTLP_ENDPOINT, so docker-compose / Kubernetes runs are unaffected.
 builder.AddServiceDefaults();
 
-builder.Host.UseSerilog((context, loggerConfig) =>
-    loggerConfig.ReadFrom.Configuration(context.Configuration));
+// writeToProviders: true so Serilog also forwards events to the registered ILoggerProviders —
+// notably the OpenTelemetry logging provider from AddServiceDefaults — which exports them over OTLP
+// to the Aspire dashboard's Structured Logs. Without it, Serilog owns the pipeline and the dashboard
+// shows no logs (traces/metrics still appear because they bypass the logging pipeline).
+builder.Host.UseSerilog(
+    (context, loggerConfig) => loggerConfig.ReadFrom.Configuration(context.Configuration),
+    writeToProviders: true);
 
 // Max upload size is configured once in StorageOptions and reused everywhere.
 // Kestrel's default (28.6 MB) would reject large requests before the domain validator runs.

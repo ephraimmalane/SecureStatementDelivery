@@ -84,14 +84,14 @@ internal sealed class SqsStatementIngestionSource(
 
         string? customerIdRaw = metadata.Metadata["customerid"];
         string? period = metadata.Metadata["period"];
-        string? idempotencyKey = metadata.Metadata["idempotencykey"];
+        string? documentId = metadata.Metadata["documentid"];
 
         if (!Guid.TryParse(customerIdRaw, out Guid customerId) ||
             string.IsNullOrWhiteSpace(period) ||
-            string.IsNullOrWhiteSpace(idempotencyKey))
+            string.IsNullOrWhiteSpace(documentId))
         {
             logger.LogError(
-                "Ingestion object {Bucket}/{Key} is missing required metadata (customerid/period/idempotencykey); leaving for dead-letter routing.",
+                "Ingestion object {Bucket}/{Key} is missing required metadata (customerid/period/documentid); leaving for dead-letter routing.",
                 bucket, key);
             return null;
         }
@@ -110,7 +110,7 @@ internal sealed class SqsStatementIngestionSource(
             Period = period,
             FileName = fileName,
             ContentType = contentType,
-            IdempotencyKey = idempotencyKey,
+            DocumentId = documentId,
             Description = metadata.Metadata["description"],
             ReceiptHandle = receiptHandle,
             OpenContentAsync = ct => OpenObjectAsync(bucket, key, ct)

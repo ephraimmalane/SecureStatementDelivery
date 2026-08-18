@@ -17,7 +17,9 @@ internal sealed class LoginEndpoint : IEndpoint
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapPost("auth/login", async (
+        RouteGroupBuilder group = app.MapAuthGroup();
+
+        group.MapPost("login", async (
             Request request,
             ICommandHandler<LoginUserCommand, LoginResponse> handler,
             CancellationToken cancellationToken) =>
@@ -25,9 +27,6 @@ internal sealed class LoginEndpoint : IEndpoint
             var command = new LoginUserCommand(request.Email, request.Password);
             Result<LoginResponse> result = await handler.Handle(command, cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
-        })
-        .WithTags(Tags.Auth)
-        .AllowAnonymous()
-        .RequireRateLimiting("auth");
+        });
     }
 }

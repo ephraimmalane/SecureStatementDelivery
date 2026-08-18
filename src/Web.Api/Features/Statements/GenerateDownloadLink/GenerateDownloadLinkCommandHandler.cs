@@ -71,6 +71,6 @@ internal sealed class GenerateDownloadLinkCommandHandler(
 
         await context.SaveChangesAsync(cancellationToken);
 
-        return new DownloadLinkResponse(rawToken, expiresAt, command.IsSingleUse);
+        return Result.Success(new DownloadLinkResponse(rawToken, expiresAt, command.IsSingleUse));
     }
 }

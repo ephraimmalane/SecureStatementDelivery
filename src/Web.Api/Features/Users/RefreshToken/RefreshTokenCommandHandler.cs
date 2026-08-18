@@ -19,10 +19,10 @@ internal sealed class RefreshTokenCommandHandler(IKeycloakClient keycloakClient)
                 command.RefreshToken,
                 cancellationToken);
 
-            return new LoginResponse(
+            return Result.Success(new LoginResponse(
                 token.AccessToken,
                 token.RefreshToken,
-                DateTime.UtcNow.AddSeconds(token.ExpiresIn));
+                DateTime.UtcNow.AddSeconds(token.ExpiresIn)));
         }
         catch (KeycloakAuthException ex) when (
             ex.StatusCode == HttpStatusCode.Unauthorized ||

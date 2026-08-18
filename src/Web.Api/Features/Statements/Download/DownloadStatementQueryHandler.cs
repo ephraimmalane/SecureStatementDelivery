@@ -115,11 +115,11 @@ internal sealed class DownloadStatementQueryHandler(
 
         if (presignedUri is not null)
         {
-            return new StatementFileResponse(presignedUri);
+            return Result.Success(new StatementFileResponse(presignedUri));
         }
 
         Stream fileStream = await fileStorage.RetrieveAsync(statement.StoragePath, cancellationToken);
 
-        return new StatementFileResponse(fileStream, statement.ContentType, statement.OriginalFileName);
+        return Result.Success(new StatementFileResponse(fileStream, statement.ContentType, statement.OriginalFileName));
     }
 }

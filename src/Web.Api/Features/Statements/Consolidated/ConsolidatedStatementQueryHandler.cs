@@ -57,12 +57,9 @@ internal sealed class ConsolidatedStatementQueryHandler(
 
         if (idNumber is null)
         {
-            bool exists = await context.Users
-                .AnyAsync(u => u.Id == customerId && u.IsActive, cancellationToken);
-
-            return Result.Failure<StatementFileResponse>(exists
-                ? StatementErrors.CustomerIdNumberMissing
-                : StatementErrors.CustomerNotFound);
+            // SA ID is a required, non-null column, so a null projection means the customer row
+            // does not exist.
+            return Result.Failure<StatementFileResponse>(StatementErrors.CustomerNotFound);
         }
 
         List<Statement> statements = await context.Statements
@@ -107,10 +104,10 @@ internal sealed class ConsolidatedStatementQueryHandler(
 
         await context.SaveChangesAsync(cancellationToken);
 
-        return new StatementFileResponse(
+        return Result.Success(new StatementFileResponse(
             new MemoryStream(pdfBytes, writable: false),
             "application/pdf",
-            $"statements-{from}_to_{to}.pdf");
+            $"statements-{from}_to_{to}.pdf"));
     }
 
     // Retrieves each source statement, merges them, and returns the encrypted PDF bytes.

@@ -170,6 +170,13 @@ public static class DependencyInjection
     {
         services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.SectionName));
 
+        // Stateless magic-byte validator (content-type -> signature); shared by both upload paths.
+        // Add a format by adding a signature entry in FileTypeValidator — no handler changes needed.
+        services.AddSingleton<IFileTypeValidator, FileTypeValidator>();
+
+        // Stateless SHA-256 content hasher: the cross-channel file-dedup fingerprint (plaintext bytes).
+        services.AddSingleton<IContentHasher, Sha256ContentHasher>();
+
         // Stateless PDF encryption helper used by both upload paths.
         services.AddSingleton<IPdfProtector, PdfSharpPdfProtector>();
 
@@ -265,6 +272,10 @@ public static class DependencyInjection
         }
 
         services.Configure<KeycloakOptions>(configuration.GetSection(KeycloakOptions.SectionName));
+
+        // Singleton cache for the master admin token, shared across the transient KeycloakClient
+        // instances so admin operations don't each perform a fresh password-grant login.
+        services.AddSingleton<KeycloakAdminTokenCache>();
 
         // Typed HttpClient for all Keycloak API calls.
         services.AddHttpClient<IKeycloakClient, KeycloakClient>();

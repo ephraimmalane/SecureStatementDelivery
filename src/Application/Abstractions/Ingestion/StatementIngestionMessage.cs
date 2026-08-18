@@ -16,8 +16,9 @@ public sealed class StatementIngestionMessage
 
     public required string ContentType { get; init; }
 
-    // Mandatory: ingestion is at-least-once, so the funnel deduplicates redeliveries on this key.
-    public required string IdempotencyKey { get; init; }
+    // Mandatory: ingestion is at-least-once, so the funnel deduplicates redeliveries on this
+    // source-assigned document identifier (scoped per customer).
+    public required string DocumentId { get; init; }
 
     public string? Description { get; init; }
 

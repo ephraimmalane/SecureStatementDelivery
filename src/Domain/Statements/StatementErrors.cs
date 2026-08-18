@@ -45,11 +45,6 @@ public static class StatementErrors
         "Statements.CustomerNotFound",
         "The specified customer account does not exist.");
 
-    public static readonly Error CustomerIdNumberMissing = Error.Problem(
-        "Statements.CustomerIdNumberMissing",
-        "The customer has no South African ID number on file, which is required to password-protect " +
-        "the statement. Add the ID number to the customer before uploading.");
-
     public static readonly Error InvalidFileContent = Error.Problem(
         "Statements.InvalidFileContent",
         "The uploaded file does not appear to be a valid PDF. File content validation failed.");

@@ -9,7 +9,7 @@ public class StatementTests
 {
     private static Result<Statement> CreateValid(
         string period = "2024-01",
-        string? idempotencyKey = null) =>
+        string? documentId = null) =>
         Statement.Create(
             customerId: Guid.NewGuid(),
             uploadedByAdminId: Guid.NewGuid(),
@@ -20,7 +20,7 @@ public class StatementTests
             period: period,
             description: "January statement",
             isPasswordProtected: false,
-            idempotencyKey: idempotencyKey);
+            documentId: documentId);
 
     [Theory]
     [InlineData("2024-13")] // month out of range
@@ -69,12 +69,12 @@ public class StatementTests
     [InlineData(null, null)]
     [InlineData("", null)]
     [InlineData("   ", null)]
-    [InlineData("  key-123  ", "key-123")]
-    public void Create_Should_NormalizeIdempotencyKey(string? input, string? expected)
+    [InlineData("  doc-123  ", "doc-123")]
+    public void Create_Should_NormalizeDocumentId(string? input, string? expected)
     {
-        Statement statement = CreateValid(idempotencyKey: input).Value;
+        Statement statement = CreateValid(documentId: input).Value;
 
-        statement.IdempotencyKey.ShouldBe(expected);
+        statement.DocumentId.ShouldBe(expected);
     }
 
     [Fact]

@@ -35,7 +35,7 @@ internal sealed class GetStatementByIdQueryHandler(
             return Result.Failure<StatementDetailResponse>(StatementErrors.AccessDenied);
         }
 
-        return new StatementDetailResponse(
+        return Result.Success(new StatementDetailResponse(
             statement.Id,
             statement.CustomerId,
             statement.Customer.FullName,
@@ -49,6 +49,6 @@ internal sealed class GetStatementByIdQueryHandler(
             statement.IsPasswordProtected ? StatementMessages.PasswordHint : null,
             statement.CreatedAt,
             statement.RevokedAt,
-            statement.RevokedReason);
+            statement.RevokedReason));
     }
 }

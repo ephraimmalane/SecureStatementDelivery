@@ -40,4 +40,13 @@ public static class EndpointExtensions
     {
         return app.RequireAuthorization(permission).RequireRateLimiting("api");
     }
+
+    // Shared route group for the anonymous auth endpoints (login, register, refresh): centralises the
+    // "auth" prefix, the Auth tag, anonymous access, and the "auth" rate-limit policy so each endpoint
+    // only declares its verb and sub-route.
+    public static RouteGroupBuilder MapAuthGroup(this IEndpointRouteBuilder app) =>
+        app.MapGroup("auth")
+            .WithTags(Tags.Auth)
+            .AllowAnonymous()
+            .RequireRateLimiting("auth");
 }

@@ -64,6 +64,6 @@ internal sealed class GetAuditLogsQueryHandler(IApplicationDbContext context)
                     log.AdditionalData))
             .ToListAsync(cancellationToken);
 
-        return new PagedAuditLogResponse(items, totalCount, query.Page, query.PageSize);
+        return Result.Success(new PagedAuditLogResponse(items, totalCount, query.Page, query.PageSize));
     }
 }

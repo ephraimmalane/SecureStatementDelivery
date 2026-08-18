@@ -30,10 +30,17 @@ public sealed partial class Statement : Entity
     public string Description { get; private set; } = string.Empty;
     public bool IsPasswordProtected { get; private set; }
 
-    // Optional caller-supplied key that makes ingestion idempotent: a redelivered upload
-    // (retried webhook / double-submit) carrying the same key is deduplicated rather than
-    // creating a second statement. Enforced by a unique index in the persistence config.
-    public string? IdempotencyKey { get; private set; }
+    // Optional source-assigned document identifier that makes ingestion idempotent: a redelivered
+    // upload (retried webhook / double-submit) carrying the same DocumentId for the same customer is
+    // deduplicated rather than creating a second statement. Enforced by a per-customer unique index in
+    // the persistence config. Deliberately independent of the file name (which is discarded), so the
+    // same document redelivered under a different name still deduplicates.
+    public string? DocumentId { get; private set; }
+
+    // Content fingerprint (SHA-256 hex) of the plaintext bytes — a channel-, name-, and source-
+    // independent identity. Enforced by a per-customer unique index so the same file uploaded through
+    // any path deduplicates regardless of DocumentId, file name, or period.
+    public string? ContentHash { get; private set; }
 
     public StatementStatus Status { get; private set; }
     public DateTime CreatedAt { get; private set; }
@@ -55,7 +62,8 @@ public sealed partial class Statement : Entity
         string period,
         string description,
         bool isPasswordProtected = false,
-        string? idempotencyKey = null)
+        string? documentId = null,
+        string? contentHash = null)
     {
         // Normalise and validate the period before the entity exists, so a malformed value
         // can never be persisted regardless of which upload path produced it.
@@ -78,7 +86,8 @@ public sealed partial class Statement : Entity
             Period = normalizedPeriod,
             Description = description,
             IsPasswordProtected = isPasswordProtected,
-            IdempotencyKey = string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim(),
+            DocumentId = string.IsNullOrWhiteSpace(documentId) ? null : documentId.Trim(),
+            ContentHash = string.IsNullOrWhiteSpace(contentHash) ? null : contentHash.Trim(),
             Status = StatementStatus.Active,
             CreatedAt = DateTime.UtcNow
         };

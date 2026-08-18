@@ -44,7 +44,7 @@ public sealed class SingleUseDownloadTokenTests(StatementDeliveryWebApplicationF
         ApplicationDbContext db = sp.GetRequiredService<ApplicationDbContext>();
 
         var customerId = Guid.NewGuid();
-        var user = User.Create(customerId, "customer@example.com", "Test", "Customer");
+        User user = User.Create(customerId, "customer@example.com", "Test", "Customer", "8001015009087").Value;
 
         using var content = new MemoryStream(Encoding.ASCII.GetBytes("%PDF-1.4 test statement"));
         StoredFile stored = await storage.StoreAsync(

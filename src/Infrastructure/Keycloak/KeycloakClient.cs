@@ -11,7 +11,8 @@ namespace Infrastructure.Keycloak;
 
 internal sealed class KeycloakClient(
     HttpClient httpClient,
-    IOptions<KeycloakOptions> options) : IKeycloakClient
+    IOptions<KeycloakOptions> options,
+    KeycloakAdminTokenCache adminTokenCache) : IKeycloakClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -76,16 +77,15 @@ internal sealed class KeycloakClient(
             realmRoles = new[] { "customer" }
         };
 
-        using var createRequest = new HttpRequestMessage(HttpMethod.Post, options.Value.AdminUsersUrl)
-        {
-            Content = new StringContent(
+        using HttpResponseMessage createResponse = await SendWithBearerAsync(
+            HttpMethod.Post,
+            options.Value.AdminUsersUrl,
+            adminToken,
+            new StringContent(
                 JsonSerializer.Serialize(userBody, JsonOptions),
                 Encoding.UTF8,
-                "application/json")
-        };
-        createRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
-
-        using HttpResponseMessage createResponse = await httpClient.SendAsync(createRequest, cancellationToken);
+                "application/json"),
+            cancellationToken);
 
         if (createResponse.StatusCode == HttpStatusCode.Conflict)
         {
@@ -112,16 +112,46 @@ internal sealed class KeycloakClient(
         return keycloakUserId;
     }
 
+    public async Task<Guid?> GetUserIdByEmailAsync(string email, CancellationToken cancellationToken)
+    {
+        string adminToken = await GetMasterAdminTokenAsync(cancellationToken);
+
+        using HttpResponseMessage response = await SendWithBearerAsync(
+            HttpMethod.Get,
+            $"{options.Value.AdminUsersUrl}?email={Uri.EscapeDataString(email)}&exact=true",
+            adminToken,
+            content: null,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        string body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        using var document = JsonDocument.Parse(body);
+        if (document.RootElement.ValueKind != JsonValueKind.Array ||
+            document.RootElement.GetArrayLength() == 0)
+        {
+            return null;
+        }
+
+        if (document.RootElement[0].TryGetProperty("id", out JsonElement idElement) &&
+            Guid.TryParse(idElement.GetString(), out Guid userId))
+        {
+            return userId;
+        }
+
+        return null;
+    }
+
     public async Task DeleteUserAsync(Guid keycloakUserId, CancellationToken cancellationToken)
     {
         string adminToken = await GetMasterAdminTokenAsync(cancellationToken);
 
-        using var request = new HttpRequestMessage(
+        using HttpResponseMessage response = await SendWithBearerAsync(
             HttpMethod.Delete,
-            $"{options.Value.AdminUsersUrl}/{keycloakUserId}");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
-
-        using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
+            $"{options.Value.AdminUsersUrl}/{keycloakUserId}",
+            adminToken,
+            content: null,
+            cancellationToken);
 
         // A 404 means the user is already gone — treat as success (idempotent rollback).
         if (response.StatusCode == HttpStatusCode.NotFound)
@@ -140,27 +170,44 @@ internal sealed class KeycloakClient(
     {
         // Fetch the role representation from Keycloak
         string rolesUrl = $"{options.Value.BaseUrl}/admin/realms/{options.Value.Realm}/roles/{roleName}";
-        using var roleRequest = new HttpRequestMessage(HttpMethod.Get, rolesUrl);
-        roleRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
-
-        using HttpResponseMessage roleResponse = await httpClient.SendAsync(roleRequest, cancellationToken);
+        using HttpResponseMessage roleResponse = await SendWithBearerAsync(
+            HttpMethod.Get, rolesUrl, adminToken, content: null, cancellationToken);
         roleResponse.EnsureSuccessStatusCode();
 
         string roleJson = await roleResponse.Content.ReadAsStringAsync(cancellationToken);
 
         // Assign the role to the user
         string roleMappingUrl = $"{options.Value.AdminUsersUrl}/{userId}/role-mappings/realm";
-        using var assignRequest = new HttpRequestMessage(HttpMethod.Post, roleMappingUrl)
-        {
-            Content = new StringContent($"[{roleJson}]", Encoding.UTF8, "application/json")
-        };
-        assignRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
-
-        using HttpResponseMessage assignResponse = await httpClient.SendAsync(assignRequest, cancellationToken);
+        using HttpResponseMessage assignResponse = await SendWithBearerAsync(
+            HttpMethod.Post,
+            roleMappingUrl,
+            adminToken,
+            new StringContent($"[{roleJson}]", Encoding.UTF8, "application/json"),
+            cancellationToken);
         assignResponse.EnsureSuccessStatusCode();
     }
 
-    private async Task<string> GetMasterAdminTokenAsync(CancellationToken cancellationToken)
+    // Sends an admin request with the bearer token attached. Centralises request creation + the
+    // Authorization header so each call site only supplies the verb, URL, and optional body. The
+    // request (and its content) is disposed after the send; the caller owns the returned response.
+    private async Task<HttpResponseMessage> SendWithBearerAsync(
+        HttpMethod method,
+        string url,
+        string bearerToken,
+        HttpContent? content,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(method, url) { Content = content };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+        return await httpClient.SendAsync(request, cancellationToken);
+    }
+
+    // Cache-backed: only performs a real password-grant login when the cache is empty or the token is
+    // near expiry; otherwise returns the shared, still-valid admin token.
+    private Task<string> GetMasterAdminTokenAsync(CancellationToken cancellationToken) =>
+        adminTokenCache.GetTokenAsync(FetchMasterAdminTokenAsync, cancellationToken);
+
+    private Task<KeycloakTokenResponse> FetchMasterAdminTokenAsync(CancellationToken cancellationToken)
     {
         var form = new Dictionary<string, string>
         {
@@ -170,12 +217,7 @@ internal sealed class KeycloakClient(
             ["password"] = options.Value.AdminPassword
         };
 
-        KeycloakTokenResponse response = await PostTokenAsync(
-            options.Value.MasterTokenUrl,
-            form,
-            cancellationToken);
-
-        return response.AccessToken;
+        return PostTokenAsync(options.Value.MasterTokenUrl, form, cancellationToken);
     }
 
     private async Task<KeycloakTokenResponse> PostTokenAsync(

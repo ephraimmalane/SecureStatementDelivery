@@ -24,7 +24,9 @@ internal sealed class RegisterEndpoint : IEndpoint
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapPost("auth/register", async (
+        RouteGroupBuilder group = app.MapAuthGroup();
+
+        group.MapPost("register", async (
             Request request,
             ICommandHandler<RegisterUserCommand, Guid> handler,
             CancellationToken cancellationToken) =>
@@ -41,9 +43,6 @@ internal sealed class RegisterEndpoint : IEndpoint
             return result.Match(
                 userId => Results.Created($"/api/v1/users/{userId}", new { Id = userId }),
                 CustomResults.Problem);
-        })
-        .WithTags(Tags.Auth)
-        .AllowAnonymous()
-        .RequireRateLimiting("auth");
+        });
     }
 }

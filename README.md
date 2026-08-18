@@ -296,8 +296,8 @@ Core banking / statement generator ──(monthly batch, renders PDFs)──┐
                           (UploadedByAdminId = StatementIngestionService principal)
 ```
 
-**(1) Push — authenticated M2M endpoint.** `POST /statements/ingest` (multipart, `Idempotency-Key`
-**required**). The generator authenticates to Keycloak with the OAuth2 **`client_credentials`**
+**(1) Push — authenticated M2M endpoint.** `POST /statements/ingest` (multipart, `Document-Id`
+**required** — the source system's stable identifier for the document, unique per customer). The generator authenticates to Keycloak with the OAuth2 **`client_credentials`**
 grant using the `statement-generator` confidential client (see `keycloak/realm-export.json`), whose
 service account holds the realm role **`statement-ingest`**. The endpoint is authorized by a
 dedicated policy that checks that role **directly off the token** — it deliberately bypasses the
@@ -306,11 +306,11 @@ statement is attributed to a reserved `StatementIngestionService` principal in t
 
 **(2) Pull — object-storage event.** The generator drops PDFs into a landing bucket; an
 `s3:ObjectCreated:*` notification lands on an SQS queue that `StatementIngestionWorker` long-polls.
-Statement metadata (`customerid`, `period`, `idempotencykey`, `filename`) travels as S3 object
+Statement metadata (`customerid`, `period`, `documentid`, `filename`) travels as S3 object
 user-metadata, so the queue message stays a thin pointer and the bytes are streamed only when the
 funnel is ready. A message is acknowledged **only after** the statement is durably created; a failed
 message is left for redelivery and ultimately the dead-letter queue — safe because the funnel
-deduplicates on the idempotency key, so a redelivered-after-success message is a no-op. This path
+deduplicates on the DocumentId (per customer), so a redelivered-after-success message is a no-op. This path
 decouples the bank's batch from the API's availability and is usually the better fit at bank scale.
 It is **off by default** (`Ingestion:Enabled=false`) and requires `Storage:Provider=S3`.
 
@@ -333,7 +333,7 @@ The same `StatementsUpload` permission and rate limit apply.
 **Flow:**
 
 1. A TUS client (`tus-js-client`, `TusDotNetClient`, etc.) creates the upload with metadata
-   `customerId`, `period`, `filename`, `contentType`, and optional `description` / `idempotencyKey`,
+   `customerId`, `period`, `filename`, `contentType`, and optional `description` / `documentId`,
    then streams the file in chunks — interrupted transfers resume from the last acknowledged byte.
 2. Optionally open the `/progress` SSE stream to receive `{ uploaded, total, percent }` events.
 3. On completion the server validates the PDF, promotes it to permanent storage, creates the
@@ -382,14 +382,18 @@ Every statement carries a **`period`** in canonical `YYYY-MM` form (e.g. `2024-0
 - **Domain layer** — `Statement.Create` trims and validates the value; an invalid period returns
   `Statements.InvalidPeriodFormat` and the just-stored file is deleted so nothing is orphaned.
 
-Listing supports two optional period filters, both whitespace-trimmed:
+Listing supports period filtering via an optional `range`:
 
-- **Exact month** — `GET /statements?period=2024-01` matches a single canonical `YYYY-MM`.
-- **Inclusive range** — `GET /statements?periodFrom=2024-01&periodTo=2024-03` (either bound optional).
-  Because stored periods are canonical `YYYY-MM`, which sorts lexically, the range is a valid
-  chronological comparison; each supplied bound is validated against the same domain invariant, so a
-  malformed value returns `Statements.InvalidPeriodFormat` rather than a confusing empty page. An
-  exact `period` takes precedence over the range if both are supplied.
+- **Preset windows** — `GET /statements?range=LastMonth` (also `Last3Months`, `Last6Months`,
+  `Last12Months`). Each resolves **server-side** to an inclusive `YYYY-MM` window of the last N
+  **completed** months, ending with the previous month — the current, incomplete month is excluded.
+- **Custom range** — `GET /statements?range=Custom&periodFrom=2024-01&periodTo=2024-03` (either bound
+  optional; equal bounds give a single exact month). If `range` is omitted, any supplied
+  `periodFrom`/`periodTo` are used directly.
+
+Because stored periods are canonical `YYYY-MM`, which sorts lexically, the range is a valid
+chronological comparison; each custom bound is validated against the same domain invariant, so a
+malformed value returns `Statements.InvalidPeriodFormat` rather than a confusing empty page.
 
 Because stored values are always canonical, a correctly-formatted query can never miss a statement.
 **Omit all period parameters to list every statement the caller owns** — they are purely optional
@@ -409,8 +413,8 @@ caller never supplies a password.
   date of birth, and a correct Luhn check digit — see `SouthAfricanIdValidator.IsValid`), stored
   **encrypted at rest** (AES-256-GCM, `FieldEncryption:Key`), and looked up server-side at upload
   time. It is never accepted on the upload request and is redacted from all logs/diagnostics.
-- A statement **cannot be uploaded** for a customer who has no ID number on file — the upload fails
-  with `Statements.CustomerIdNumberMissing`. An admin can set or correct it via
+- The SA ID number is **mandatory at registration** and stored in a non-nullable column, so every
+  customer always has one on file. An admin can still correct it via
   `PUT /customers/{id}/south-african-id` (requires the `Admin.Users` permission), which applies the
   same validation and encrypts the value at rest.
 - Encrypting the PDF also opens it, so a structurally invalid PDF is rejected at upload.

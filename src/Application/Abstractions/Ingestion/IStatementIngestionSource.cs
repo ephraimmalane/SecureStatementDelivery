@@ -4,7 +4,7 @@ namespace Application.Abstractions.Ingestion;
 // pipeline — typically an object-storage (S3) event delivered onto a queue (SQS). The worker polls
 // ReceiveAsync, feeds each message through the ingestion funnel, and only then AcknowledgeAsync's
 // it. A message left unacknowledged (because ingestion failed) is redelivered by the queue and
-// eventually dead-lettered, which is safe because the funnel is idempotent on IdempotencyKey.
+// eventually dead-lettered, which is safe because the funnel is idempotent on DocumentId.
 public interface IStatementIngestionSource
 {
     // Returns the next batch of pending statements, or an empty list if none are available. May

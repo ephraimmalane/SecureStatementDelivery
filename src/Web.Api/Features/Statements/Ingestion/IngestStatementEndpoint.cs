@@ -13,7 +13,7 @@ namespace Web.Api.Features.Statements.Ingestion;
 // here, authenticated as a Keycloak service account (client_credentials grant) carrying the
 // statement-ingest realm role. This is the production counterpart to the human admin upload — it
 // feeds the exact same funnel (validate → scan → encrypt → store → Statement + audit), with no
-// human actor. An Idempotency-Key is mandatory because any real delivery pipeline is at-least-once.
+// human actor. A Document-Id is mandatory because any real delivery pipeline is at-least-once.
 internal sealed class IngestStatementEndpoint : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
@@ -30,12 +30,12 @@ internal sealed class IngestStatementEndpoint : IEndpoint
                 return Results.BadRequest(new { Error = "A PDF file is required." });
             }
 
-            string? idempotencyKey = httpContext.Request.Headers["Idempotency-Key"].FirstOrDefault();
-            if (string.IsNullOrWhiteSpace(idempotencyKey))
+            string? documentId = httpContext.Request.Headers["Document-Id"].FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(documentId))
             {
-                // Without a key a redelivered (retried) push would create a duplicate statement.
+                // Without a document id a redelivered (retried) push would create a duplicate statement.
                 return Results.BadRequest(
-                    new { Error = "An Idempotency-Key header is required for ingestion." });
+                    new { Error = "A Document-Id header is required for ingestion." });
             }
 
             await using Stream fileStream = file.OpenReadStream();
@@ -49,7 +49,7 @@ internal sealed class IngestStatementEndpoint : IEndpoint
                 request.Description ?? string.Empty,
                 // No human uploaded this — attribute it to the ingestion service principal.
                 SystemPrincipals.StatementIngestionService,
-                idempotencyKey);
+                documentId);
 
             Result<Guid> result = await handler.Handle(command, cancellationToken);
 

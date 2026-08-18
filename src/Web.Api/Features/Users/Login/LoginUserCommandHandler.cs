@@ -18,10 +18,10 @@ internal sealed class LoginUserCommandHandler(IKeycloakClient keycloakClient)
                 command.Password,
                 cancellationToken);
 
-            return new LoginResponse(
+            return Result.Success(new LoginResponse(
                 token.AccessToken,
                 token.RefreshToken,
-                DateTime.UtcNow.AddSeconds(token.ExpiresIn));
+                DateTime.UtcNow.AddSeconds(token.ExpiresIn)));
         }
         catch (KeycloakAuthException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
         {

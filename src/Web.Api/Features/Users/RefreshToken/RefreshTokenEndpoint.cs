@@ -13,7 +13,9 @@ internal sealed class RefreshTokenEndpoint : IEndpoint
 
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapPost("auth/refresh", async (
+        RouteGroupBuilder group = app.MapAuthGroup();
+
+        group.MapPost("refresh", async (
             Request request,
             ICommandHandler<RefreshTokenCommand, LoginResponse> handler,
             CancellationToken cancellationToken) =>
@@ -21,9 +23,6 @@ internal sealed class RefreshTokenEndpoint : IEndpoint
             var command = new RefreshTokenCommand(request.RefreshToken);
             Result<LoginResponse> result = await handler.Handle(command, cancellationToken);
             return result.Match(Results.Ok, CustomResults.Problem);
-        })
-        .WithTags(Tags.Auth)
-        .AllowAnonymous()
-        .RequireRateLimiting("auth");
+        });
     }
 }

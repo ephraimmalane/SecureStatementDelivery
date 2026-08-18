@@ -14,7 +14,7 @@ public sealed record UploadStatementCommand(
     string Period,
     string Description,
     Guid UploadedByPrincipalId,
-    string? IdempotencyKey = null) : ICommand<Guid>
+    string? DocumentId = null) : ICommand<Guid>
 {
     public override string ToString() =>
         $"UploadStatementCommand {{ CustomerId = {CustomerId}, OriginalFileName = {OriginalFileName}, " +

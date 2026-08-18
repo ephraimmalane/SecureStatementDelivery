@@ -27,8 +27,9 @@ internal sealed class UploadStatementEndpoint : IEndpoint
 
             await using Stream fileStream = file.OpenReadStream();
 
-            // Optional idempotency key: a redelivered upload with the same key is deduplicated.
-            string? idempotencyKey = httpContext.Request.Headers["Idempotency-Key"].FirstOrDefault();
+            // Optional source-assigned document id: a redelivered upload carrying the same Document-Id
+            // (for the same customer) is deduplicated.
+            string? documentId = httpContext.Request.Headers["Document-Id"].FirstOrDefault();
 
             var command = new UploadStatementCommand(
                 request.CustomerId,
@@ -39,7 +40,7 @@ internal sealed class UploadStatementEndpoint : IEndpoint
                 request.Description ?? string.Empty,
                 // The human admin performing the upload is the recorded actor.
                 userContext.UserId,
-                idempotencyKey);
+                documentId);
 
             Result<Guid> result = await handler.Handle(command, cancellationToken);
 

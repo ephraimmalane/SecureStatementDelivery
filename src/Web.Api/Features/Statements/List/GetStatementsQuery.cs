@@ -2,12 +2,14 @@ using Application.Abstractions.Messaging;
 
 namespace Web.Api.Features.Statements.List;
 
-// Period filtering: `Period` is an exact single-month match and takes precedence; otherwise
-// `PeriodFrom`/`PeriodTo` form an inclusive month range (either bound optional). All are canonical
-// YYYY-MM, which sorts lexically, so the range is a plain string comparison.
+// Period filtering: `Range` selects a preset window (last 1/3/6/12 completed months) resolved
+// server-side, or `Custom` to use `PeriodFrom`/`PeriodTo` (inclusive, either bound optional; equal
+// bounds give a single month). When `Range` is unspecified, any supplied PeriodFrom/PeriodTo are
+// used directly. All periods are canonical YYYY-MM, which sorts lexically, so the range is a plain
+// string comparison.
 public sealed record GetStatementsQuery(
     Guid? CustomerId,
-    string? Period,
+    StatementPeriodRange? Range,
     string? PeriodFrom,
     string? PeriodTo,
     int Page = 1,

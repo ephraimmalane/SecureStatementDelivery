@@ -39,14 +39,29 @@ internal sealed class StatementConfiguration : IEntityTypeConfiguration<Statemen
         builder.Property(s => s.RevokedReason)
             .HasMaxLength(500);
 
-        builder.Property(s => s.IdempotencyKey)
+        builder.Property(s => s.DocumentId)
             .HasMaxLength(128);
 
-        // Unique across non-null keys only, so statements uploaded without a key are unaffected.
-        // This is the hard guard that makes ingestion idempotent even under a race.
-        builder.HasIndex(s => s.IdempotencyKey)
+        // Per-customer uniqueness across non-null document ids only, so statements uploaded without a
+        // DocumentId are unaffected. This is the hard guard that makes ingestion idempotent even under
+        // a race; scoping by customer means source ids only need to be unique within a customer.
+        builder.HasIndex(s => new { s.CustomerId, s.DocumentId })
             .IsUnique()
-            .HasFilter("idempotency_key IS NOT NULL");
+            .HasFilter("document_id IS NOT NULL")
+            .HasDatabaseName("ix_statements_customer_id_document_id");
+
+        // SHA-256 hex fingerprint of the plaintext bytes (64 chars).
+        builder.Property(s => s.ContentHash)
+            .HasMaxLength(64);
+
+        // Per-(customer, period) uniqueness on the content fingerprint: the same file (identical bytes)
+        // uploaded via any channel for the same period deduplicates regardless of DocumentId or file
+        // name. Scoped to the period so two legitimately-different but byte-identical statements in
+        // different periods (e.g. no-activity months) are never merged. Null is unconstrained.
+        builder.HasIndex(s => new { s.CustomerId, s.Period, s.ContentHash })
+            .IsUnique()
+            .HasFilter("content_hash IS NOT NULL")
+            .HasDatabaseName("ix_statements_customer_id_period_content_hash");
 
         builder.HasIndex(s => s.CustomerId);
         builder.HasIndex(s => s.UploadedByAdminId);

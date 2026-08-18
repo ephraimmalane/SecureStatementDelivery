@@ -14,6 +14,8 @@ internal sealed class UploadStatementCommandHandler(
     IFileStorageService fileStorage,
     IPdfProtector pdfProtector,
     IFileContentScanner contentScanner,
+    IFileTypeValidator fileTypeValidator,
+    IContentHasher contentHasher,
     StatementMetrics metrics) : ICommandHandler<UploadStatementCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(UploadStatementCommand command, CancellationToken cancellationToken)
@@ -27,37 +29,59 @@ internal sealed class UploadStatementCommandHandler(
 
         if (idNumber is null)
         {
-            // FirstOrDefault returns null both when the customer doesn't exist and when their ID
-            // column is null; distinguish so the caller gets an actionable error.
-            bool customerExists = await context.Users
-                .AnyAsync(u => u.Id == command.CustomerId && u.IsActive, cancellationToken);
-
-            return Result.Failure<Guid>(customerExists
-                ? StatementErrors.CustomerIdNumberMissing
-                : StatementErrors.CustomerNotFound);
+            // SA ID is a required, non-null column, so a null projection means there is no active
+            // customer row for this id.
+            return Result.Failure<Guid>(StatementErrors.CustomerNotFound);
         }
 
-        // Idempotent replay: a redelivered upload with a key we've already stored returns the
-        // original statement without storing the file again. The unique index is the hard guard
-        // against a concurrent race (handled after SaveChanges below).
-        if (!string.IsNullOrWhiteSpace(command.IdempotencyKey))
+        // Idempotent replay: a redelivered upload with a DocumentId we've already stored for this
+        // customer returns the original statement without storing the file again. The per-customer
+        // unique index is the hard guard against a concurrent race (handled after SaveChanges below).
+        if (!string.IsNullOrWhiteSpace(command.DocumentId))
         {
             Guid existingId = await context.Statements
-                .Where(s => s.IdempotencyKey == command.IdempotencyKey)
+                .Where(s => s.CustomerId == command.CustomerId && s.DocumentId == command.DocumentId)
                 .Select(s => s.Id)
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (existingId != Guid.Empty)
             {
-                return existingId;
+                return Result.Success(existingId);
             }
         }
 
-        // Business rule: at most one live statement per customer per period. A correction/re-issue
-        // must revoke the existing statement first. Checked here (before any file work) so the caller
-        // gets a clean 409 rather than a wasted store; the partial unique index is the hard guard
-        // against a concurrent race (handled after SaveChanges below). This runs *after* the
-        // idempotency check so a genuine redelivery of the same statement replays instead of conflicting.
+        // Reject a file whose bytes don't match the declared content type's signature — extension and
+        // Content-Type alone can be faked. The validator reads the header and rewinds the stream.
+        if (!await fileTypeValidator.IsValidAsync(command.ContentType, command.FileContent, cancellationToken))
+        {
+            metrics.UploadRejected("invalid_content");
+            return Result.Failure<Guid>(StatementErrors.InvalidFileContent);
+        }
+
+        // Cross-channel idempotency: a content fingerprint of the plaintext bytes is channel-, name-,
+        // and source-independent, so the SAME file re-delivered for the SAME period via any path
+        // (different DocumentId or file name, or none) resolves to the original instead of a duplicate.
+        // Scoped to the period on purpose: two legitimately-different statements can be byte-identical
+        // across periods (e.g. no-activity months), and those must NOT be merged. Runs before the
+        // per-period conflict check so a true redelivery replays instead of returning a 409. The
+        // per-(customer, period) unique index is the hard guard against a concurrent race (below).
+        string contentHash = await contentHasher.ComputeSha256Async(command.FileContent, cancellationToken);
+
+        Guid duplicateId = await context.Statements
+            .Where(s => s.CustomerId == command.CustomerId
+                        && s.Period == command.Period
+                        && s.ContentHash == contentHash)
+            .Select(s => s.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (duplicateId != Guid.Empty)
+        {
+            return Result.Success(duplicateId);
+        }
+
+        // Business rule: at most one live statement per customer per period. A correction/re-issue must
+        // revoke the existing statement first. The partial unique index is the hard guard against a
+        // concurrent race (handled after SaveChanges below).
         bool activeStatementExists = await context.Statements
             .AnyAsync(
                 s => s.CustomerId == command.CustomerId
@@ -69,17 +93,6 @@ internal sealed class UploadStatementCommandHandler(
         {
             return Result.Failure<Guid>(StatementErrors.ActiveStatementExistsForPeriod(command.Period));
         }
-
-        // Validate PDF magic bytes (%PDF-) — extension and Content-Type alone can be faked.
-        byte[] magic = new byte[5];
-        int bytesRead = await command.FileContent.ReadAsync(magic.AsMemory(0, 5), cancellationToken);
-        if (bytesRead < 5 || !magic.AsSpan().SequenceEqual("%PDF-"u8))
-        {
-            metrics.UploadRejected("invalid_content");
-            return Result.Failure<Guid>(StatementErrors.InvalidFileContent);
-        }
-
-        command.FileContent.Position = 0;
 
         // Anti-malware scan before the bytes are ever promoted to permanent storage.
         if (!await contentScanner.IsCleanAsync(command.FileContent, cancellationToken))
@@ -139,7 +152,8 @@ internal sealed class UploadStatementCommandHandler(
             command.Period,
             command.Description,
             isPasswordProtected: true,
-            command.IdempotencyKey);
+            command.DocumentId,
+            contentHash);
 
         if (statementResult.IsFailure)
         {
@@ -182,18 +196,31 @@ internal sealed class UploadStatementCommandHandler(
                 return Result.Failure<Guid>(StatementErrors.ActiveStatementExistsForPeriod(command.Period));
             }
 
-            // Idempotency-key race: the winner stored the identical delivery; return it.
-            if (!string.IsNullOrWhiteSpace(command.IdempotencyKey))
+            // DocumentId race: the winner stored the identical delivery; return it.
+            if (!string.IsNullOrWhiteSpace(command.DocumentId))
             {
                 Guid winnerId = await context.Statements
-                    .Where(s => s.IdempotencyKey == command.IdempotencyKey)
+                    .Where(s => s.CustomerId == command.CustomerId && s.DocumentId == command.DocumentId)
                     .Select(s => s.Id)
                     .FirstOrDefaultAsync(cancellationToken);
 
                 if (winnerId != Guid.Empty)
                 {
-                    return winnerId;
+                    return Result.Success(winnerId);
                 }
+            }
+
+            // ContentHash race: a concurrent upload of the identical file for this period won; return it.
+            Guid contentWinnerId = await context.Statements
+                .Where(s => s.CustomerId == command.CustomerId
+                            && s.Period == command.Period
+                            && s.ContentHash == contentHash)
+                .Select(s => s.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (contentWinnerId != Guid.Empty)
+            {
+                return Result.Success(contentWinnerId);
             }
 
             throw;
@@ -201,6 +228,6 @@ internal sealed class UploadStatementCommandHandler(
 
         metrics.StatementUploaded();
 
-        return statement.Id;
+        return Result.Success(statement.Id);
     }
 }

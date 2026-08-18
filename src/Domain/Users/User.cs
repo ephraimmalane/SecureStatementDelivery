@@ -11,33 +11,38 @@ public sealed class User : Entity
     public string FirstName { get; private set; } = string.Empty;
     public string LastName { get; private set; } = string.Empty;
 
-    // The customer's South African ID number. Used as the open password for every statement PDF
-    // delivered to this customer, so it must be present before a statement can be issued. Stored
+    // The customer's South African ID number. Required for every customer: it is the open password
+    // on every statement PDF delivered to them, so an account can never exist without one. Stored
     // encrypted at rest (it is sensitive PII as well as a credential).
-    public string? SouthAfricanIdNumber { get; private set; }
+    public string SouthAfricanIdNumber { get; private set; } = string.Empty;
 
     public bool IsActive { get; private set; }
     public DateTime CreatedAt { get; private set; }
 
     public string FullName => $"{FirstName} {LastName}";
 
-    // Id must be the Keycloak subject (sub) UUID so domain IDs match JWT claims.
-    public static User Create(
+    // Id must be the Keycloak subject (sub) UUID so domain IDs match JWT claims. The SA ID number is
+    // mandatory and validated here (13 digits, valid date of birth, Luhn check), so an invalid or
+    // missing value can never be persisted regardless of which caller creates the user.
+    public static Result<User> Create(
         Guid keycloakId,
         string email,
         string firstName,
         string lastName,
-        string? southAfricanIdNumber = null)
+        string southAfricanIdNumber)
     {
+        if (!SouthAfricanIdValidator.IsValid(southAfricanIdNumber))
+        {
+            return Result.Failure<User>(UserErrors.InvalidIdNumber);
+        }
+
         var user = new User
         {
             Id = keycloakId,
             Email = email,
             FirstName = firstName,
             LastName = lastName,
-            SouthAfricanIdNumber = string.IsNullOrWhiteSpace(southAfricanIdNumber)
-                ? null
-                : southAfricanIdNumber.Trim(),
+            SouthAfricanIdNumber = southAfricanIdNumber.Trim(),
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };

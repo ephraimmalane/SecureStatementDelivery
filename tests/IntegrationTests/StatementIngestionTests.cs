@@ -74,16 +74,16 @@ public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFacto
     public async Task Processor_Should_BeIdempotent_OnRedelivery()
     {
         Guid customerId = await SeedCustomerAsync();
-        string idempotencyKey = Guid.NewGuid().ToString();
+        string documentId = Guid.NewGuid().ToString();
 
         StatementIngestionProcessor processor = CreateProcessor(out IServiceScope scope);
         using IServiceScope _ = scope;
 
         // At-least-once delivery: the same message arriving twice must not create two statements.
         Result<Guid> first = await processor.ProcessAsync(
-            BuildMessage(customerId, "2024-04", idempotencyKey), CancellationToken.None);
+            BuildMessage(customerId, "2024-04", documentId), CancellationToken.None);
         Result<Guid> second = await processor.ProcessAsync(
-            BuildMessage(customerId, "2024-04", idempotencyKey), CancellationToken.None);
+            BuildMessage(customerId, "2024-04", documentId), CancellationToken.None);
 
         first.IsSuccess.ShouldBeTrue();
         second.IsSuccess.ShouldBeTrue();
@@ -91,8 +91,92 @@ public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFacto
 
         using IServiceScope verify = _factory.Services.CreateScope();
         ApplicationDbContext db = verify.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        int count = await db.Statements.AsNoTracking().CountAsync(s => s.IdempotencyKey == idempotencyKey);
+        int count = await db.Statements.AsNoTracking().CountAsync(s => s.DocumentId == documentId);
         count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Processor_Should_Dedup_SameDocumentId_Even_When_FileNameDiffers()
+    {
+        Guid customerId = await SeedCustomerAsync();
+        string documentId = Guid.NewGuid().ToString();
+
+        StatementIngestionProcessor processor = CreateProcessor(out IServiceScope scope);
+        using IServiceScope _ = scope;
+
+        // The DocumentId is the document's identity; the file name is not. The same document
+        // redelivered under a different name must dedup to the one statement (returning the same id
+        // via the DocumentId pre-check), never create a second — the exact "same file, different name"
+        // case the design guards against.
+        Result<Guid> first = await processor.ProcessAsync(
+            BuildMessage(customerId, "2024-05", documentId, "january.pdf"), CancellationToken.None);
+        Result<Guid> second = await processor.ProcessAsync(
+            BuildMessage(customerId, "2024-05", documentId, "jan_statement_final.pdf"), CancellationToken.None);
+
+        first.IsSuccess.ShouldBeTrue();
+        second.IsSuccess.ShouldBeTrue();
+        second.Value.ShouldBe(first.Value);
+
+        using IServiceScope verify = _factory.Services.CreateScope();
+        ApplicationDbContext db = verify.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        int count = await db.Statements.AsNoTracking().CountAsync(s => s.DocumentId == documentId);
+        count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Processor_Should_Dedup_IdenticalBytes_SamePeriod_AcrossDifferentDocumentIds()
+    {
+        Guid customerId = await SeedCustomerAsync();
+        byte[] pdfBytes = MakePdf().ToArray(); // the exact same file bytes for both uploads
+
+        StatementIngestionProcessor processor = CreateProcessor(out IServiceScope scope);
+        using IServiceScope _ = scope;
+
+        // Same file, same period, but different DocumentIds (e.g. M2M vs manual). Within a period the
+        // content hash is the cross-channel identity, so the second resolves to the first.
+        Result<Guid> first = await processor.ProcessAsync(
+            BuildMessage(customerId, "2024-06", "DOC-A", content: () => new MemoryStream(pdfBytes)),
+            CancellationToken.None);
+        Result<Guid> second = await processor.ProcessAsync(
+            BuildMessage(customerId, "2024-06", "DOC-B", content: () => new MemoryStream(pdfBytes)),
+            CancellationToken.None);
+
+        first.IsSuccess.ShouldBeTrue();
+        second.IsSuccess.ShouldBeTrue();
+        second.Value.ShouldBe(first.Value); // deduped by content hash within the period
+
+        using IServiceScope verify = _factory.Services.CreateScope();
+        ApplicationDbContext db = verify.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        int count = await db.Statements.AsNoTracking().CountAsync(s => s.CustomerId == customerId);
+        count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Processor_Should_NotMerge_IdenticalBytes_AcrossDifferentPeriods()
+    {
+        Guid customerId = await SeedCustomerAsync();
+        byte[] pdfBytes = MakePdf().ToArray(); // byte-identical statements (e.g. two no-activity months)
+
+        StatementIngestionProcessor processor = CreateProcessor(out IServiceScope scope);
+        using IServiceScope _ = scope;
+
+        // Byte-identical files for two DIFFERENT periods are legitimately different statements and must
+        // NOT be merged — the content hash is scoped to the period precisely to avoid this false merge.
+        Result<Guid> june = await processor.ProcessAsync(
+            BuildMessage(customerId, "2024-06", "DOC-A", content: () => new MemoryStream(pdfBytes)),
+            CancellationToken.None);
+        Result<Guid> july = await processor.ProcessAsync(
+            BuildMessage(customerId, "2024-07", "DOC-B", content: () => new MemoryStream(pdfBytes)),
+            CancellationToken.None);
+
+        june.IsSuccess.ShouldBeTrue();
+        july.IsSuccess.ShouldBeTrue();
+        july.Value.ShouldNotBe(june.Value); // kept as two separate statements
+
+        using IServiceScope verify = _factory.Services.CreateScope();
+        ApplicationDbContext db = verify.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        int count = await db.Statements.AsNoTracking().CountAsync(s => s.CustomerId == customerId);
+        count.ShouldBe(2);
     }
 
     private StatementIngestionProcessor CreateProcessor(out IServiceScope scope)
@@ -109,7 +193,7 @@ public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFacto
         ApplicationDbContext db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
         var customerId = Guid.NewGuid();
-        var user = User.Create(customerId, $"{customerId:N}@example.com", "Test", "Customer", ValidSaId);
+        User user = User.Create(customerId, $"{customerId:N}@example.com", "Test", "Customer", ValidSaId).Value;
 
         db.Users.Add(user);
         await db.SaveChangesAsync(CancellationToken.None);
@@ -117,17 +201,20 @@ public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFacto
         return customerId;
     }
 
-    private static StatementIngestionMessage BuildMessage(Guid customerId, string period, string idempotencyKey) =>
+    private static StatementIngestionMessage BuildMessage(
+        Guid customerId, string period, string documentId,
+        string fileName = "statement.pdf",
+        Func<Stream>? content = null) =>
         new()
         {
             CustomerId = customerId,
             Period = period,
-            FileName = "statement.pdf",
+            FileName = fileName,
             ContentType = "application/pdf",
-            IdempotencyKey = idempotencyKey,
+            DocumentId = documentId,
             Description = "machine ingested",
             ReceiptHandle = "test-receipt",
-            OpenContentAsync = _ => Task.FromResult<Stream>(MakePdf())
+            OpenContentAsync = _ => Task.FromResult<Stream>(content?.Invoke() ?? MakePdf())
         };
 
     // A structurally valid single-page PDF the encryption step can open (a fake byte string can't).

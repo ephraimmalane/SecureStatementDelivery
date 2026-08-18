@@ -1,3 +1,4 @@
+using System.Globalization;
 using Application.Abstractions.Authentication;
 using Domain.Statements;
 using Domain.Users;
@@ -9,10 +10,11 @@ using Web.Api.Features.Statements.List;
 
 namespace IntegrationTests;
 
-// Proves the customer-facing statement list filtering: an exact single-month match, an inclusive
-// YYYY-MM range (either bound optional), exact-takes-precedence, and validation of malformed bounds.
-// Driven at the handler level with a stubbed user context — the HTTP list requires a Keycloak token
-// the offline suite can't mint, and the ownership filter is exercised by the stubbed customer id.
+// Proves the customer-facing statement list filtering: preset windows (last N completed months), a
+// custom inclusive YYYY-MM range (either bound optional; equal bounds = a single month), and
+// validation of malformed bounds. Driven at the handler level with a stubbed user context — the HTTP
+// list requires a Keycloak token the offline suite can't mint, and the ownership filter is exercised
+// by the stubbed customer id.
 public sealed class ListStatementsFilterTests(StatementDeliveryWebApplicationFactory factory)
     : IClassFixture<StatementDeliveryWebApplicationFactory>
 {
@@ -45,15 +47,44 @@ public sealed class ListStatementsFilterTests(StatementDeliveryWebApplicationFac
     }
 
     [Fact]
-    public async Task ExactPeriod_Should_TakePrecedence_OverRange()
+    public async Task CustomRange_WithEqualBounds_Should_ReturnSingleMonth()
     {
         Guid customerId = await SeedAsync("2024-01", "2024-02", "2024-03");
 
         PagedStatementResponse page = await ListAsync(
-            customerId, new GetStatementsQuery(null, "2024-01", "2024-02", "2024-03"));
+            customerId, new GetStatementsQuery(null, StatementPeriodRange.Custom, "2024-02", "2024-02"));
 
-        page.Items.Select(i => i.Period).ToArray().ShouldBe(["2024-01"]);
+        page.Items.Select(i => i.Period).ToArray().ShouldBe(["2024-02"]);
     }
+
+    [Fact]
+    public async Task LastMonth_Should_ReturnOnlyThePreviousCompletedMonth()
+    {
+        Guid customerId = await SeedAsync(MonthsAgo(2), MonthsAgo(1), MonthsAgo(0));
+
+        PagedStatementResponse page = await ListAsync(
+            customerId, new GetStatementsQuery(null, StatementPeriodRange.LastMonth, null, null));
+
+        // Excludes the current (incomplete) month and anything older than last month.
+        page.Items.Select(i => i.Period).ToArray().ShouldBe([MonthsAgo(1)]);
+    }
+
+    [Fact]
+    public async Task Last3Months_Should_ReturnPreviousThreeCompletedMonths_ExcludingCurrent()
+    {
+        Guid customerId = await SeedAsync(
+            MonthsAgo(4), MonthsAgo(3), MonthsAgo(2), MonthsAgo(1), MonthsAgo(0));
+
+        PagedStatementResponse page = await ListAsync(
+            customerId, new GetStatementsQuery(null, StatementPeriodRange.Last3Months, null, null));
+
+        page.Items.Select(i => i.Period).OrderBy(p => p).ToArray()
+            .ShouldBe(new[] { MonthsAgo(3), MonthsAgo(2), MonthsAgo(1) }.OrderBy(p => p).ToArray());
+    }
+
+    // Same UTC-anchored month arithmetic the handler uses, so preset expectations line up.
+    private static string MonthsAgo(int n) =>
+        DateTime.UtcNow.AddMonths(-n).ToString("yyyy-MM", CultureInfo.InvariantCulture);
 
     [Fact]
     public async Task InvalidRangeBound_Should_Fail()
@@ -87,7 +118,7 @@ public sealed class ListStatementsFilterTests(StatementDeliveryWebApplicationFac
         ApplicationDbContext db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
         var customerId = Guid.NewGuid();
-        var user = User.Create(customerId, $"{customerId:N}@example.com", "Test", "Customer", ValidSaId);
+        User user = User.Create(customerId, $"{customerId:N}@example.com", "Test", "Customer", ValidSaId).Value;
         db.Users.Add(user);
 
         foreach (string period in periods)

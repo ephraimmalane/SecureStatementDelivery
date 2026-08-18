@@ -115,7 +115,7 @@ public sealed class DownloadTokenSecurityTests(StatementDeliveryWebApplicationFa
         DateTime expiry = expiresAt ?? DateTime.UtcNow.AddMinutes(5);
         var customerId = Guid.NewGuid();
         var adminId = Guid.NewGuid();
-        var user = User.Create(customerId, $"{customerId:N}@example.com", "Test", "Customer");
+        User user = User.Create(customerId, $"{customerId:N}@example.com", "Test", "Customer", "8001015009087").Value;
 
         using var content = new MemoryStream(Encoding.ASCII.GetBytes("%PDF-1.4 test statement"));
         StoredFile stored = await storage.StoreAsync(

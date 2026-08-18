@@ -37,13 +37,12 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
                 "Field encryption is not configured. Call optionsBuilder.UseFieldEncryption(...) " +
                 "wherever ApplicationDbContext options are built.");
 
-        // Encrypt the SA ID number at rest. The value converter runs only for non-null values, so
-        // a customer without an ID on file is stored as NULL (and cannot yet receive statements).
+        // Encrypt the SA ID number at rest. It is a required field, so the converter always receives
+        // a non-null value.
         modelBuilder.Entity<User>()
             .Property(u => u.SouthAfricanIdNumber)
             .HasConversion(
-                // EF invokes the converter only for non-null values (NULL is stored as NULL).
-                plain => fieldEncryptor.Encrypt(plain!),
+                plain => fieldEncryptor.Encrypt(plain),
                 cipher => fieldEncryptor.Decrypt(cipher));
     }
 

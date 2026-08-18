@@ -27,7 +27,7 @@ public sealed class StatementIngestionProcessor(
             message.Period,
             message.Description ?? string.Empty,
             SystemPrincipals.StatementIngestionService,
-            message.IdempotencyKey);
+            message.DocumentId);
 
         return await handler.Handle(command, cancellationToken);
     }

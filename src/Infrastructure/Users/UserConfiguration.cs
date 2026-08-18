@@ -18,8 +18,9 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.LastName).HasMaxLength(100).IsRequired();
 
         // Holds the base64 AES-GCM ciphertext of the SA ID number (see ApplicationDbContext
-        // value converter), comfortably within 256 chars for a 13-digit plaintext.
-        builder.Property(u => u.SouthAfricanIdNumber).HasMaxLength(256);
+        // value converter), comfortably within 256 chars for a 13-digit plaintext. Required: every
+        // customer must have an SA ID on file.
+        builder.Property(u => u.SouthAfricanIdNumber).HasMaxLength(256).IsRequired();
         builder.Property(u => u.IsActive).HasDefaultValue(true);
         builder.Property(u => u.CreatedAt).IsRequired();
 

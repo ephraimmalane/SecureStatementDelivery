@@ -9,7 +9,7 @@ namespace Web.Api.Features.Statements.Ingestion;
 // statements produced by the bank's generation pipeline, feeds each through the funnel in its own DI
 // scope, and acknowledges only after the statement is durably created. A failed message is left
 // unacknowledged so the queue redelivers and ultimately dead-letters it — safe because the funnel
-// deduplicates on the idempotency key, so a redelivered-after-success message is a no-op.
+// deduplicates on the DocumentId (per customer), so a redelivered-after-success message is a no-op.
 internal sealed class StatementIngestionWorker(
     IStatementIngestionSource source,
     IServiceScopeFactory scopeFactory,
@@ -67,15 +67,15 @@ internal sealed class StatementIngestionWorker(
         {
             await source.AcknowledgeAsync(message, cancellationToken);
             logger.LogInformation(
-                "Ingested statement {StatementId} for customer {CustomerId} (idempotency {Key}).",
-                result.Value, message.CustomerId, message.IdempotencyKey);
+                "Ingested statement {StatementId} for customer {CustomerId} (document {DocumentId}).",
+                result.Value, message.CustomerId, message.DocumentId);
         }
         else
         {
             // Not acknowledged — the queue redelivers, then dead-letters after maxReceiveCount.
             logger.LogWarning(
-                "Ingestion rejected for customer {CustomerId} (idempotency {Key}): {Error}. Left for redelivery.",
-                message.CustomerId, message.IdempotencyKey, result.Error.Code);
+                "Ingestion rejected for customer {CustomerId} (document {DocumentId}): {Error}. Left for redelivery.",
+                message.CustomerId, message.DocumentId, result.Error.Code);
         }
     }
 }
