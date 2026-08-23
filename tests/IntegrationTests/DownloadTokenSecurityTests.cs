@@ -13,11 +13,6 @@ using Shouldly;
 
 namespace IntegrationTests;
 
-// End-to-end proof of the download-link security model over the real HTTP pipeline: a signed link
-// is only redeemable while it is unexpired, from the IP it was bound to, for a statement that is
-// still active — and every attempt, allowed or denied, is written to the audit trail. Complements
-// SingleUseDownloadTokenTests (which proves the single-use guarantee) by covering the remaining
-// guards. All state is seeded directly so each guard can be isolated.
 public sealed class DownloadTokenSecurityTests(StatementDeliveryWebApplicationFactory factory)
     : IClassFixture<StatementDeliveryWebApplicationFactory>
 {
@@ -31,8 +26,6 @@ public sealed class DownloadTokenSecurityTests(StatementDeliveryWebApplicationFa
 
         HttpResponseMessage response = await client.GetAsync(DownloadUrl(seeded.Token));
 
-        // An expired link is a client error, and the single-use flag must remain unset so a clock
-        // fix or key confusion can never turn an expired token into a spent-but-valid one.
         ((int)response.StatusCode).ShouldBeInRange(400, 499);
         (await TokenIsUsedAsync(seeded.TokenId)).ShouldBeFalse();
         (await HasAuditAsync(seeded.StatementId, AuditAction.StatementDownloaded)).ShouldBeFalse();
@@ -46,8 +39,6 @@ public sealed class DownloadTokenSecurityTests(StatementDeliveryWebApplicationFa
 
         HttpResponseMessage response = await client.GetAsync(DownloadUrl(seeded.Token));
 
-        // Revocation is a logical status change (WORM-compatible): the token still validates and the
-        // file still exists, but no download path serves a revoked statement.
         ((int)response.StatusCode).ShouldBeInRange(400, 499);
         (await TokenIsUsedAsync(seeded.TokenId)).ShouldBeFalse();
     }
@@ -64,7 +55,6 @@ public sealed class DownloadTokenSecurityTests(StatementDeliveryWebApplicationFa
 
         ((int)response.StatusCode).ShouldBeInRange(400, 499);
         (await TokenIsUsedAsync(seeded.TokenId)).ShouldBeFalse();
-        // The denied attempt must leave a forensic trail — this is the control the brief hinges on.
         (await HasAuditAsync(seeded.StatementId, AuditAction.DownloadDenied)).ShouldBeTrue();
     }
 
@@ -98,8 +88,6 @@ public sealed class DownloadTokenSecurityTests(StatementDeliveryWebApplicationFa
     private static Uri DownloadUrl(string token) =>
         new($"/statements/download?token={token}", UriKind.Relative);
 
-    // Seeds a customer, a stored PDF, an active (or revoked) statement, and a matching single-use
-    // download token straight through the domain + storage services the app itself uses.
     private async Task<SeededToken> SeedAsync(
         DateTime? expiresAt = null,
         string? ipAddress = null,

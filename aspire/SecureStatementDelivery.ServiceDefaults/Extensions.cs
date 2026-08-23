@@ -9,8 +9,6 @@ using OpenTelemetry.Trace;
 
 namespace Microsoft.Extensions.Hosting;
 
-// Shared, project-agnostic defaults applied to every service run under Aspire:
-// OpenTelemetry, health checks, service discovery, and resilient HttpClient defaults.
 public static class Extensions
 {
     private const string AlivenessEndpointPath = "/alive";
@@ -26,10 +24,8 @@ public static class Extensions
 
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
-            // Turn on resilience (retries, circuit breaker, timeouts) by default.
             http.AddStandardResilienceHandler();
 
-            // Resolve service names (e.g. "https://keycloak") through service discovery.
             http.AddServiceDiscovery();
         });
 
@@ -51,10 +47,7 @@ public static class Extensions
                 metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
-                    // Application-defined counters (uploads, outbox health, token validation).
                     .AddMeter("SecureStatementDelivery")
-                    // Expose a Prometheus /metrics endpoint for the pod scrape annotation. Coexists
-                    // with the OTLP exporter (used by the Aspire dashboard).
                     .AddPrometheusExporter();
             })
             .WithTracing(tracing =>
@@ -76,7 +69,6 @@ public static class Extensions
 
         if (useOtlpExporter)
         {
-            // Aspire injects OTEL_EXPORTER_OTLP_ENDPOINT, sending telemetry to the dashboard.
             builder.Services.AddOpenTelemetry().UseOtlpExporter();
         }
 
@@ -87,7 +79,6 @@ public static class Extensions
         where TBuilder : IHostApplicationBuilder
     {
         builder.Services.AddHealthChecks()
-            // A trivial liveness check tagged "live".
             .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
 
         return builder;
@@ -95,15 +86,11 @@ public static class Extensions
 
     public static WebApplication MapDefaultEndpoints(this WebApplication app)
     {
-        // The application already maps "/health" with PostgreSQL + Redis readiness checks
-        // (used by Kubernetes probes in production). We only add a lightweight liveness
-        // endpoint here to avoid registering "/health" twice.
         app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
         {
             Predicate = registration => registration.Tags.Contains("live")
         });
 
-        // Prometheus scrape target (matches the pod annotation prometheus.io/path: /metrics).
         app.MapPrometheusScrapingEndpoint();
 
         return app;

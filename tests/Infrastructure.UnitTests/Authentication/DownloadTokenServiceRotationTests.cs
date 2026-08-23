@@ -5,8 +5,6 @@ using Shouldly;
 
 namespace Infrastructure.UnitTests.Authentication;
 
-// Proves the signing-key rotation overlap: a download link signed with the previous key keeps
-// validating while that key remains in PreviousSecrets, and stops the moment it is dropped.
 public class DownloadTokenServiceRotationTests
 {
     private const string OldSecret = "old-download-token-secret-000000000000";
@@ -45,10 +43,8 @@ public class DownloadTokenServiceRotationTests
     [Fact]
     public void ValidateToken_Should_Accept_PreviousKey_DuringOverlapWindow()
     {
-        // Link was signed before rotation, with the old key...
         string token = TokenSignedWith(OldSecret, out Guid statementId, out _);
 
-        // ...and the service now signs with the new key but still accepts the old one.
         DownloadTokenClaims? claims = Service(NewSecret, OldSecret).ValidateToken(token);
 
         claims.ShouldNotBeNull();
@@ -60,7 +56,6 @@ public class DownloadTokenServiceRotationTests
     {
         string token = TokenSignedWith(OldSecret, out _, out _);
 
-        // Old key dropped from PreviousSecrets — the link must no longer validate.
         DownloadTokenClaims? claims = Service(NewSecret).ValidateToken(token);
 
         claims.ShouldBeNull();
@@ -69,7 +64,6 @@ public class DownloadTokenServiceRotationTests
     [Fact]
     public void GenerateToken_Should_Always_SignWithCurrentKey_NotPreviousKeys()
     {
-        // A token freshly issued by the rotated service must NOT validate under the old key alone.
         (string token, _) = Service(NewSecret, OldSecret).GenerateToken(
             Guid.NewGuid(), Guid.NewGuid(), DateTime.UtcNow.AddMinutes(5));
 

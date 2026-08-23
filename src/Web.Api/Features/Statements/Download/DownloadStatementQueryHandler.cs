@@ -34,9 +34,6 @@ internal sealed class DownloadStatementQueryHandler(
             return Result.Failure<StatementFileResponse>(DownloadTokenErrors.TokenInvalid);
         }
 
-        // Defense-in-depth: the statement served is the one persisted with the token, never the
-        // value from the (signed) JWT claim. If they diverge, the token has been tampered with or
-        // the signing key was compromised — reject rather than serve a mismatched statement.
         if (downloadToken.StatementId != claims.StatementId)
         {
             return Result.Failure<StatementFileResponse>(DownloadTokenErrors.TokenInvalid);
@@ -52,7 +49,6 @@ internal sealed class DownloadStatementQueryHandler(
             return Result.Failure<StatementFileResponse>(DownloadTokenErrors.TokenAlreadyUsed);
         }
 
-        // Enforce IP binding: if the token was created with a specific IP, the download must originate from the same IP.
         if (downloadToken.IpAddress is not null &&
             !downloadToken.IpAddress.Equals(query.IpAddress, StringComparison.OrdinalIgnoreCase))
         {
@@ -80,10 +76,6 @@ internal sealed class DownloadStatementQueryHandler(
 
         if (downloadToken.IsSingleUse)
         {
-            // Atomically consume the token. The conditional UPDATE (... WHERE is_used = false) makes
-            // single-use race-proof: of N concurrent requests for the same token, exactly one flips
-            // the flag (1 row affected); the rest affect 0 rows and are rejected. The earlier IsUsed
-            // check is just a fast path — this is the authoritative guard.
             int consumed = await context.DownloadTokens
                 .Where(t => t.Id == downloadToken.Id && !t.IsUsed)
                 .ExecuteUpdateAsync(

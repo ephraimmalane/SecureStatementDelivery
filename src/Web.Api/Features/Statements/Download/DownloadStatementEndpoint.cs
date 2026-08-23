@@ -34,12 +34,6 @@ internal sealed class DownloadStatementEndpoint : IEndpoint
 
             StatementFileResponse response = result.Value;
 
-            // S3 path: presigned URL redirect — S3 handles range requests and parallel chunked
-            // downloads natively. The API transfers zero bytes of the file payload.
-            //
-            // Local path: enableRangeProcessing=true makes ASP.NET Core emit Accept-Ranges: bytes
-            // and honour Range: headers so browsers and download managers can resume interrupted
-            // downloads. Requires the underlying stream to be seekable (File.OpenRead is seekable).
             return response.RedirectUri is not null
                 ? Results.Redirect(response.RedirectUri.AbsoluteUri, permanent: false)
                 : Results.Stream(

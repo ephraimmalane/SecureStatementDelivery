@@ -40,7 +40,6 @@ internal sealed class DownloadInAppEndpoint : IEndpoint
                     enableRangeProcessing: true);
         })
         .WithTags(Tags.Statements)
-        // Authenticated: requires the caller's JWT + Statements.Download permission.
         .HasPermission(Permissions.StatementsDownload);
     }
 }

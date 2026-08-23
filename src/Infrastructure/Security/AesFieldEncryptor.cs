@@ -4,9 +4,6 @@ using Microsoft.Extensions.Options;
 
 namespace Infrastructure.Security;
 
-// AES-256-GCM authenticated encryption. Output layout (then base64): nonce(12) || tag(16) || ciphertext.
-// GCM gives both confidentiality and integrity, so a tampered ciphertext fails to decrypt rather
-// than yielding garbage. A fresh random nonce per call means identical plaintexts differ on disk.
 internal sealed class AesFieldEncryptor : IFieldEncryptor
 {
     private const int NonceSize = 12;

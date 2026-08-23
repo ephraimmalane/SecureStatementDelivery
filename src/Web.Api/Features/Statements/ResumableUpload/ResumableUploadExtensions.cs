@@ -12,9 +12,6 @@ public static class ResumableUploadExtensions
         return services;
     }
 
-    // Maps the TUS resumable-upload protocol endpoint. The route is protected by the same
-    // Statements.Upload permission policy as the regular multipart upload endpoint, so the
-    // JWT bearer + permission check run before any chunk is accepted.
     public static void MapResumableUploadEndpoint(this IEndpointRouteBuilder app)
     {
         app.MapTus("/statements/upload/resumable", static httpContext =>

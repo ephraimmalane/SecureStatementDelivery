@@ -46,10 +46,8 @@ internal sealed class ConsolidatedStatementQueryHandler(
         Guid userId = userContext.UserId;
         bool isAdmin = userContext.IsAdmin;
 
-        // A customer always gets their own statements; only an admin may target another customer.
         Guid customerId = isAdmin && query.CustomerId.HasValue ? query.CustomerId.Value : userId;
 
-        // The SA ID opens the (encrypted) source statements and re-protects the merged output.
         string? idNumber = await context.Users
             .Where(u => u.Id == customerId && u.IsActive)
             .Select(u => u.SouthAfricanIdNumber)
@@ -57,8 +55,6 @@ internal sealed class ConsolidatedStatementQueryHandler(
 
         if (idNumber is null)
         {
-            // SA ID is a required, non-null column, so a null projection means the customer row
-            // does not exist.
             return Result.Failure<StatementFileResponse>(StatementErrors.CustomerNotFound);
         }
 
@@ -74,9 +70,6 @@ internal sealed class ConsolidatedStatementQueryHandler(
             return Result.Failure<StatementFileResponse>(StatementErrors.NoStatementsInRange);
         }
 
-        // Fingerprint the request by content, so the cache key changes whenever the included set or
-        // the encryption password changes (new upload, revoke, ID correction). The cache can never
-        // serve a stale or wrongly-encrypted consolidation.
         string cacheKey = BuildCacheKey(customerId, from, to, idNumber, statements);
 
         byte[]? pdfBytes = await cache.GetBytesAsync(cacheKey, cancellationToken);
@@ -90,7 +83,6 @@ internal sealed class ConsolidatedStatementQueryHandler(
             }
         }
 
-        // Audit every included statement on each access — cache hit or miss.
         foreach (Statement statement in statements)
         {
             context.DownloadAuditLogs.Add(DownloadAuditLog.Create(
@@ -110,7 +102,6 @@ internal sealed class ConsolidatedStatementQueryHandler(
             $"statements-{from}_to_{to}.pdf"));
     }
 
-    // Retrieves each source statement, merges them, and returns the encrypted PDF bytes.
     private async Task<byte[]> GenerateAsync(
         List<Statement> statements,
         string idNumber,
@@ -153,15 +144,11 @@ internal sealed class ConsolidatedStatementQueryHandler(
         string idNumber,
         List<Statement> statements)
     {
-        // SHA-256 over the SA ID + the ordered statement ids. The ID is hashed, never placed in the
-        // key in clear. Any change to the set or the password yields a different key.
         string input = idNumber + "|" + string.Join(",", statements.Select(s => s.Id));
         string fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input)));
         return $"consolidated:{customerId}:{from}:{to}:{fingerprint}";
     }
 
-    // Expands [from, to] (inclusive) into canonical YYYY-MM periods, or null if the range is
-    // backwards or longer than maxMonths.
     private static List<string>? ExpandRange(string from, string to, int maxMonths)
     {
         int fromIndex = MonthIndex(from);

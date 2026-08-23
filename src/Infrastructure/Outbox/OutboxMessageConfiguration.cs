@@ -19,8 +19,6 @@ internal sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<Outb
 
         builder.Property(m => m.OccurredOnUtc).IsRequired();
 
-        // The processor only ever queries for unprocessed messages ordered by age, so index the
-        // claim path. A filtered index keeps it small once processed rows accumulate.
         builder.HasIndex(m => m.OccurredOnUtc)
             .HasFilter("processed_on_utc IS NULL");
     }

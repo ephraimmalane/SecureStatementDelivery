@@ -17,7 +17,6 @@ public interface IFileStorageService
 
     Task<bool> ExistsAsync(string storagePath, CancellationToken cancellationToken);
 
-    // Returns null for providers that do not support pre-signed URLs (e.g. Local).
     Task<Uri?> GeneratePresignedDownloadUriAsync(
         string storagePath,
         TimeSpan expiry,

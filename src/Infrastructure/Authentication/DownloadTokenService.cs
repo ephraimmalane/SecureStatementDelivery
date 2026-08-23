@@ -48,8 +48,6 @@ internal sealed class DownloadTokenService(IOptions<DownloadTokenOptions> option
 
             TokenValidationResult result = handler.ValidateTokenAsync(token, new TokenValidationParameters
             {
-                // Accept the current key plus any key still inside its rotation overlap window, so a
-                // link signed before a key rotation keeps validating until its TTL elapses.
                 IssuerSigningKeys = GetValidationKeys(),
                 ValidIssuer = options.Value.Issuer,
                 ValidAudience = options.Value.Audience,
@@ -88,8 +86,6 @@ internal sealed class DownloadTokenService(IOptions<DownloadTokenOptions> option
         return Convert.ToHexString(hash);
     }
 
-    // Current signing key first, then any previous keys still in their overlap window. HS256 tokens
-    // carry no `kid`, so the handler tries every key until one verifies the signature.
     private IEnumerable<SecurityKey> GetValidationKeys()
     {
         yield return new SymmetricSecurityKey(Encoding.UTF8.GetBytes(options.Value.Secret));

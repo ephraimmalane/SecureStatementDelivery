@@ -7,9 +7,6 @@ using Web.Api.Infrastructure;
 
 namespace Web.Api.Features.Users.SetIdNumber;
 
-// Admin-only: set or update a customer's South African ID number — e.g. to backfill it for a
-// customer provisioned before the field existed, or to correct it. Required before that customer
-// can be issued a (password-protected) statement.
 internal sealed class SetCustomerIdNumberEndpoint : IEndpoint
 {
     public sealed record Request(string SouthAfricanIdNumber)

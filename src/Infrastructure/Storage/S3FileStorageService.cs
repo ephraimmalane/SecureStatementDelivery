@@ -16,9 +16,6 @@ internal sealed class S3FileStorageService(
     private readonly string _bucket = options.Value.S3.BucketName;
     private readonly int _presignedExpiryMinutes = options.Value.S3.PresignedUrlExpiryMinutes;
 
-    // TransferUtility automatically switches to S3 multipart upload for files above its threshold
-    // (default 16 MB). Multipart upload is resumable, uploads parts in parallel, and is required
-    // by S3 for objects over 5 GB. Thread-safe — the underlying IAmazonS3 is a singleton.
     private readonly TransferUtility _transfer = new(s3Client);
 
     public async Task<StoredFile> StoreAsync(
@@ -40,21 +37,15 @@ internal sealed class S3FileStorageService(
             InputStream = content,
             ContentType = contentType,
             AutoCloseStream = false,
-            // S3 requires parts ≥ 5 MB (except the final part). 8 MB balances throughput
-            // vs part count for the maximum supported file size of 50 MB.
             PartSize = 8L * 1024 * 1024
         };
 
-        // Encryption at rest with a customer-managed KMS key (SSE-KMS). When no key is
-        // configured the object inherits the bucket's default encryption.
         if (!string.IsNullOrWhiteSpace(_s3.KmsKeyId))
         {
             request.ServerSideEncryptionMethod = ServerSideEncryptionMethod.AWSKMS;
             request.ServerSideEncryptionKeyManagementServiceKeyId = _s3.KmsKeyId;
         }
 
-        // Write-once-read-many retention. The object cannot be overwritten or deleted
-        // until the retain-until date passes (bucket must have Object Lock enabled).
         if (_s3.UseObjectLock)
         {
             request.ObjectLockMode = _s3.ObjectLockMode.Equals("Compliance", StringComparison.OrdinalIgnoreCase)
@@ -141,10 +132,6 @@ internal sealed class S3FileStorageService(
         return safe.Length > 100 ? safe[^100..] : safe;
     }
 
-    // S3 keys are logical paths: "a/../b" resolves to "b", so a crafted file name could
-    // escape the intended directory prefix even though there is no real file system.
-    // GetInvalidFileNameChars() does not strip '/' or '.' on every platform, so guard
-    // explicitly that the final key stays within the target directory.
     private static void GuardAgainstTraversal(string key, string directory)
     {
         bool hasTraversalSegment = key

@@ -15,16 +15,9 @@ using Web.Api.Features.Statements.Upload;
 
 namespace IntegrationTests;
 
-// Proves the production ingestion paths. The HTTP push endpoint is locked to the service-account
-// policy (an anonymous caller is rejected before any work). The pull path is proven functionally by
-// driving the shared processor + funnel end-to-end: a machine-ingested statement is stored,
-// encrypted, attributed to the ingestion service principal, audited, and idempotent on redelivery —
-// exactly like an admin upload but with no human actor.
 public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFactory factory)
     : IClassFixture<StatementDeliveryWebApplicationFactory>
 {
-    // Valid SA ID (DOB 1980-01-01, correct Luhn) — required before a statement can be ingested,
-    // because every statement is AES-encrypted with the customer's ID as the open password.
     private const string ValidSaId = "8001015009087";
 
     private readonly StatementDeliveryWebApplicationFactory _factory = factory;
@@ -38,7 +31,6 @@ public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFacto
         HttpResponseMessage response = await client.PostAsync(
             new Uri("/statements/ingest", UriKind.Relative), content);
 
-        // The endpoint requires the statement-ingest service-account policy; no token => 401.
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
@@ -60,7 +52,6 @@ public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFacto
 
         Statement statement = await db.Statements.AsNoTracking().SingleAsync(s => s.Id == result.Value);
         statement.CustomerId.ShouldBe(customerId);
-        // No human uploaded it — the actor is the reserved ingestion service principal.
         statement.UploadedByAdminId.ShouldBe(SystemPrincipals.StatementIngestionService);
         statement.IsActive.ShouldBeTrue();
         statement.IsPasswordProtected.ShouldBeTrue();
@@ -79,7 +70,6 @@ public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFacto
         StatementIngestionProcessor processor = CreateProcessor(out IServiceScope scope);
         using IServiceScope _ = scope;
 
-        // At-least-once delivery: the same message arriving twice must not create two statements.
         Result<Guid> first = await processor.ProcessAsync(
             BuildMessage(customerId, "2024-04", documentId), CancellationToken.None);
         Result<Guid> second = await processor.ProcessAsync(
@@ -104,10 +94,6 @@ public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFacto
         StatementIngestionProcessor processor = CreateProcessor(out IServiceScope scope);
         using IServiceScope _ = scope;
 
-        // The DocumentId is the document's identity; the file name is not. The same document
-        // redelivered under a different name must dedup to the one statement (returning the same id
-        // via the DocumentId pre-check), never create a second — the exact "same file, different name"
-        // case the design guards against.
         Result<Guid> first = await processor.ProcessAsync(
             BuildMessage(customerId, "2024-05", documentId, "january.pdf"), CancellationToken.None);
         Result<Guid> second = await processor.ProcessAsync(
@@ -127,13 +113,11 @@ public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFacto
     public async Task Processor_Should_Dedup_IdenticalBytes_SamePeriod_AcrossDifferentDocumentIds()
     {
         Guid customerId = await SeedCustomerAsync();
-        byte[] pdfBytes = MakePdf().ToArray(); // the exact same file bytes for both uploads
+        byte[] pdfBytes = MakePdf().ToArray();
 
         StatementIngestionProcessor processor = CreateProcessor(out IServiceScope scope);
         using IServiceScope _ = scope;
 
-        // Same file, same period, but different DocumentIds (e.g. M2M vs manual). Within a period the
-        // content hash is the cross-channel identity, so the second resolves to the first.
         Result<Guid> first = await processor.ProcessAsync(
             BuildMessage(customerId, "2024-06", "DOC-A", content: () => new MemoryStream(pdfBytes)),
             CancellationToken.None);
@@ -143,7 +127,7 @@ public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFacto
 
         first.IsSuccess.ShouldBeTrue();
         second.IsSuccess.ShouldBeTrue();
-        second.Value.ShouldBe(first.Value); // deduped by content hash within the period
+        second.Value.ShouldBe(first.Value);
 
         using IServiceScope verify = _factory.Services.CreateScope();
         ApplicationDbContext db = verify.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -155,13 +139,11 @@ public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFacto
     public async Task Processor_Should_NotMerge_IdenticalBytes_AcrossDifferentPeriods()
     {
         Guid customerId = await SeedCustomerAsync();
-        byte[] pdfBytes = MakePdf().ToArray(); // byte-identical statements (e.g. two no-activity months)
+        byte[] pdfBytes = MakePdf().ToArray();
 
         StatementIngestionProcessor processor = CreateProcessor(out IServiceScope scope);
         using IServiceScope _ = scope;
 
-        // Byte-identical files for two DIFFERENT periods are legitimately different statements and must
-        // NOT be merged — the content hash is scoped to the period precisely to avoid this false merge.
         Result<Guid> june = await processor.ProcessAsync(
             BuildMessage(customerId, "2024-06", "DOC-A", content: () => new MemoryStream(pdfBytes)),
             CancellationToken.None);
@@ -171,7 +153,7 @@ public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFacto
 
         june.IsSuccess.ShouldBeTrue();
         july.IsSuccess.ShouldBeTrue();
-        july.Value.ShouldNotBe(june.Value); // kept as two separate statements
+        july.Value.ShouldNotBe(june.Value);
 
         using IServiceScope verify = _factory.Services.CreateScope();
         ApplicationDbContext db = verify.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -217,7 +199,6 @@ public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFacto
             OpenContentAsync = _ => Task.FromResult<Stream>(content?.Invoke() ?? MakePdf())
         };
 
-    // A structurally valid single-page PDF the encryption step can open (a fake byte string can't).
     private static MemoryStream MakePdf()
     {
         using var document = new PdfDocument();

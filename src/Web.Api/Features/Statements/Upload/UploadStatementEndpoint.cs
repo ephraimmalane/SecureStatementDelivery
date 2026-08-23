@@ -27,8 +27,6 @@ internal sealed class UploadStatementEndpoint : IEndpoint
 
             await using Stream fileStream = file.OpenReadStream();
 
-            // Optional source-assigned document id: a redelivered upload carrying the same Document-Id
-            // (for the same customer) is deduplicated.
             string? documentId = httpContext.Request.Headers["Document-Id"].FirstOrDefault();
 
             var command = new UploadStatementCommand(
@@ -38,7 +36,6 @@ internal sealed class UploadStatementEndpoint : IEndpoint
                 file.ContentType,
                 request.Period,
                 request.Description ?? string.Empty,
-                // The human admin performing the upload is the recorded actor.
                 userContext.UserId,
                 documentId);
 
@@ -54,7 +51,5 @@ internal sealed class UploadStatementEndpoint : IEndpoint
         .Accepts<IFormFile>("multipart/form-data");
     }
 
-    // The statement is always AES-encrypted with the customer's South African ID number as the open
-    // password (looked up server-side), so no password is accepted from the caller.
     public sealed record Request(Guid CustomerId, string Period, string? Description);
 }

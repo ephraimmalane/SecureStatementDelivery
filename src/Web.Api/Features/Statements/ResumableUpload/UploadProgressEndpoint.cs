@@ -5,10 +5,6 @@ using Web.Api.Features;
 
 namespace Web.Api.Features.Statements.ResumableUpload;
 
-// Server-Sent Events stream of upload progress for a given TUS file id. Works across pods
-// because it reads the offset/length from the shared TUS store rather than per-pod state.
-// The client opens this alongside the upload and receives periodic { uploaded, total, percent }
-// events until the upload completes (temp file removed) or the connection is closed.
 internal sealed class UploadProgressEndpoint : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
@@ -21,7 +17,6 @@ internal sealed class UploadProgressEndpoint : IEndpoint
         {
             httpContext.Response.ContentType = "text/event-stream";
             httpContext.Response.Headers.CacheControl = "no-cache";
-            // Disable Nginx response buffering so events are flushed to the client immediately.
             httpContext.Response.Headers["X-Accel-Buffering"] = "no";
 
             TusDiskStore store = tus.Store;
@@ -31,7 +26,6 @@ internal sealed class UploadProgressEndpoint : IEndpoint
                 bool exists = await store.FileExistAsync(fileId, cancellationToken);
                 if (!exists)
                 {
-                    // The temp file is removed once finalisation completes (or it never existed).
                     await WriteEventAsync(httpContext, """{"status":"completed"}""", cancellationToken);
                     break;
                 }

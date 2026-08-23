@@ -7,10 +7,6 @@ namespace Infrastructure.Ingestion;
 
 public static class IngestionServiceCollectionExtensions
 {
-    // Registers the SQS-backed pull ingestion source and its AWS client. Lives in Infrastructure so
-    // the concrete source (and the SQS dependency) stay internal to this assembly; the presentation
-    // layer only wires the worker + processor that consume the IStatementIngestionSource abstraction.
-    // Call only when ingestion is enabled.
     public static IServiceCollection AddSqsIngestionSource(
         this IServiceCollection services,
         IngestionOptions options)

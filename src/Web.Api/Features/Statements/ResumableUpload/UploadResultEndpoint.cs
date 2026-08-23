@@ -4,9 +4,6 @@ using Web.Api.Features;
 
 namespace Web.Api.Features.Statements.ResumableUpload;
 
-// After a resumable upload finishes, the client polls this endpoint with the TUS file id
-// (the last path segment of the upload URL) to learn the created statement id or the
-// validation error. Returns 202 while finalisation is still in flight.
 internal sealed class UploadResultEndpoint : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
@@ -22,7 +19,6 @@ internal sealed class UploadResultEndpoint : IEndpoint
 
             if (result is null)
             {
-                // Not finished yet (or unknown id). Client should retry shortly.
                 return Results.StatusCode(StatusCodes.Status202Accepted);
             }
 

@@ -23,10 +23,10 @@ public class StatementTests
             documentId: documentId);
 
     [Theory]
-    [InlineData("2024-13")] // month out of range
-    [InlineData("2024-00")] // month zero
-    [InlineData("24-01")]   // two-digit year
-    [InlineData("2024-1")]  // single-digit month
+    [InlineData("2024-13")]
+    [InlineData("2024-00")]
+    [InlineData("24-01")]
+    [InlineData("2024-1")]
     [InlineData("not-a-period")]
     [InlineData("")]
     public void Create_Should_Fail_When_PeriodIsInvalid(string period)

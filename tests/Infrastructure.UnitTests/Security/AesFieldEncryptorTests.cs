@@ -7,7 +7,6 @@ namespace Infrastructure.UnitTests.Security;
 
 public class AesFieldEncryptorTests
 {
-    // Base64 of 32 bytes — a valid 256-bit key for tests.
     private const string Key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
     private static AesFieldEncryptor Create() =>
@@ -28,7 +27,6 @@ public class AesFieldEncryptorTests
     {
         AesFieldEncryptor encryptor = Create();
 
-        // A fresh random nonce per call means ciphertexts differ even for identical input.
         encryptor.Encrypt("9001015800086").ShouldNotBe(encryptor.Encrypt("9001015800086"));
     }
 
@@ -37,7 +35,7 @@ public class AesFieldEncryptorTests
     {
         AesFieldEncryptor encryptor = Create();
         byte[] raw = Convert.FromBase64String(encryptor.Encrypt("9001015800086"));
-        raw[^1] ^= 0xFF; // flip a bit in the ciphertext body
+        raw[^1] ^= 0xFF;
 
         Should.Throw<Exception>(() => encryptor.Decrypt(Convert.ToBase64String(raw)));
     }

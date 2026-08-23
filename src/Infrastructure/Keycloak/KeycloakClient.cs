@@ -61,7 +61,6 @@ internal sealed class KeycloakClient(
     {
         string adminToken = await GetMasterAdminTokenAsync(cancellationToken);
 
-        // Create the user in Keycloak
         var userBody = new
         {
             username = email,
@@ -98,7 +97,6 @@ internal sealed class KeycloakClient(
             throw new InvalidOperationException($"Keycloak user creation failed ({createResponse.StatusCode}): {body}");
         }
 
-        // Extract the new user's UUID from the Location header: .../users/{uuid}
         string? location = createResponse.Headers.Location?.ToString();
         string[] locationParts = location?.Split('/') ?? [];
         if (location is null || !Guid.TryParse(locationParts[^1], out Guid keycloakUserId))
@@ -106,7 +104,6 @@ internal sealed class KeycloakClient(
             throw new InvalidOperationException("Keycloak did not return a user Location header.");
         }
 
-        // Assign the customer realm role
         await AssignRealmRoleAsync(adminToken, keycloakUserId, "customer", cancellationToken);
 
         return keycloakUserId;
@@ -153,7 +150,6 @@ internal sealed class KeycloakClient(
             content: null,
             cancellationToken);
 
-        // A 404 means the user is already gone — treat as success (idempotent rollback).
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return;
@@ -168,7 +164,6 @@ internal sealed class KeycloakClient(
         string roleName,
         CancellationToken cancellationToken)
     {
-        // Fetch the role representation from Keycloak
         string rolesUrl = $"{options.Value.BaseUrl}/admin/realms/{options.Value.Realm}/roles/{roleName}";
         using HttpResponseMessage roleResponse = await SendWithBearerAsync(
             HttpMethod.Get, rolesUrl, adminToken, content: null, cancellationToken);
@@ -176,7 +171,6 @@ internal sealed class KeycloakClient(
 
         string roleJson = await roleResponse.Content.ReadAsStringAsync(cancellationToken);
 
-        // Assign the role to the user
         string roleMappingUrl = $"{options.Value.AdminUsersUrl}/{userId}/role-mappings/realm";
         using HttpResponseMessage assignResponse = await SendWithBearerAsync(
             HttpMethod.Post,
@@ -187,9 +181,6 @@ internal sealed class KeycloakClient(
         assignResponse.EnsureSuccessStatusCode();
     }
 
-    // Sends an admin request with the bearer token attached. Centralises request creation + the
-    // Authorization header so each call site only supplies the verb, URL, and optional body. The
-    // request (and its content) is disposed after the send; the caller owns the returned response.
     private async Task<HttpResponseMessage> SendWithBearerAsync(
         HttpMethod method,
         string url,
@@ -202,8 +193,6 @@ internal sealed class KeycloakClient(
         return await httpClient.SendAsync(request, cancellationToken);
     }
 
-    // Cache-backed: only performs a real password-grant login when the cache is empty or the token is
-    // near expiry; otherwise returns the shared, still-valid admin token.
     private Task<string> GetMasterAdminTokenAsync(CancellationToken cancellationToken) =>
         adminTokenCache.GetTokenAsync(FetchMasterAdminTokenAsync, cancellationToken);
 
@@ -244,7 +233,6 @@ internal sealed class KeycloakClient(
     }
 }
 
-// Typed exceptions allow feature handlers to map Keycloak errors to domain errors cleanly.
 public sealed class KeycloakAuthException(HttpStatusCode statusCode, string body) : Exception(body)
 {
     public HttpStatusCode StatusCode { get; } = statusCode;

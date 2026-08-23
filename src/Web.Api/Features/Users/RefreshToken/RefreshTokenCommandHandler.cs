@@ -14,7 +14,6 @@ internal sealed class RefreshTokenCommandHandler(IKeycloakClient keycloakClient)
     {
         try
         {
-            // Keycloak manages refresh token rotation and family invalidation natively.
             KeycloakTokenResponse token = await keycloakClient.RefreshTokenAsync(
                 command.RefreshToken,
                 cancellationToken);

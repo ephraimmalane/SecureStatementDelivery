@@ -12,8 +12,6 @@ internal sealed class RegisterUserCommandValidator : AbstractValidator<RegisterU
         RuleFor(c => c.Email).NotEmpty().EmailAddress();
         RuleFor(c => c.Password).NotEmpty().MinimumLength(8);
 
-        // Full SA ID validation: 13 digits, a valid date of birth, and a correct Luhn check digit
-        // (not just length). This value becomes the open password on every statement PDF.
         RuleFor(c => c.SouthAfricanIdNumber)
             .NotEmpty()
             .Must(SouthAfricanIdValidator.IsValid)

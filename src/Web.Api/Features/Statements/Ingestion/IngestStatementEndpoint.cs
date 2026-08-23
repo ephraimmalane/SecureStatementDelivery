@@ -9,11 +9,6 @@ using Web.Api.Infrastructure;
 
 namespace Web.Api.Features.Statements.Ingestion;
 
-// Machine-to-machine ingestion (push): the bank's statement-generation system posts a rendered PDF
-// here, authenticated as a Keycloak service account (client_credentials grant) carrying the
-// statement-ingest realm role. This is the production counterpart to the human admin upload — it
-// feeds the exact same funnel (validate → scan → encrypt → store → Statement + audit), with no
-// human actor. A Document-Id is mandatory because any real delivery pipeline is at-least-once.
 internal sealed class IngestStatementEndpoint : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
@@ -33,7 +28,6 @@ internal sealed class IngestStatementEndpoint : IEndpoint
             string? documentId = httpContext.Request.Headers["Document-Id"].FirstOrDefault();
             if (string.IsNullOrWhiteSpace(documentId))
             {
-                // Without a document id a redelivered (retried) push would create a duplicate statement.
                 return Results.BadRequest(
                     new { Error = "A Document-Id header is required for ingestion." });
             }
@@ -47,7 +41,6 @@ internal sealed class IngestStatementEndpoint : IEndpoint
                 file.ContentType,
                 request.Period,
                 request.Description ?? string.Empty,
-                // No human uploaded this — attribute it to the ingestion service principal.
                 SystemPrincipals.StatementIngestionService,
                 documentId);
 
@@ -63,7 +56,5 @@ internal sealed class IngestStatementEndpoint : IEndpoint
         .Accepts<IFormFile>("multipart/form-data");
     }
 
-    // The statement is always AES-encrypted with the customer's South African ID number as the open
-    // password (looked up server-side), so no password is accepted from the caller.
     public sealed record Request(Guid CustomerId, string Period, string? Description);
 }

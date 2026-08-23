@@ -10,11 +10,6 @@ using Web.Api.Features.Statements.List;
 
 namespace IntegrationTests;
 
-// Proves the customer-facing statement list filtering: preset windows (last N completed months), a
-// custom inclusive YYYY-MM range (either bound optional; equal bounds = a single month), and
-// validation of malformed bounds. Driven at the handler level with a stubbed user context — the HTTP
-// list requires a Keycloak token the offline suite can't mint, and the ownership filter is exercised
-// by the stubbed customer id.
 public sealed class ListStatementsFilterTests(StatementDeliveryWebApplicationFactory factory)
     : IClassFixture<StatementDeliveryWebApplicationFactory>
 {
@@ -65,7 +60,6 @@ public sealed class ListStatementsFilterTests(StatementDeliveryWebApplicationFac
         PagedStatementResponse page = await ListAsync(
             customerId, new GetStatementsQuery(null, StatementPeriodRange.LastMonth, null, null));
 
-        // Excludes the current (incomplete) month and anything older than last month.
         page.Items.Select(i => i.Period).ToArray().ShouldBe([MonthsAgo(1)]);
     }
 
@@ -82,7 +76,6 @@ public sealed class ListStatementsFilterTests(StatementDeliveryWebApplicationFac
             .ShouldBe(new[] { MonthsAgo(3), MonthsAgo(2), MonthsAgo(1) }.OrderBy(p => p).ToArray());
     }
 
-    // Same UTC-anchored month arithmetic the handler uses, so preset expectations line up.
     private static string MonthsAgo(int n) =>
         DateTime.UtcNow.AddMonths(-n).ToString("yyyy-MM", CultureInfo.InvariantCulture);
 

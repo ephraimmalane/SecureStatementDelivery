@@ -2,17 +2,11 @@ using System.Diagnostics.Metrics;
 
 namespace Infrastructure.Observability;
 
-// Application-defined metrics, surfaced via OpenTelemetry (OTLP + Prometheus /metrics). These are
-// the signals worth alerting on beyond the built-in HTTP RED metrics: ingestion volume, rejected
-// uploads, and outbox health (a rising failure/backlog is the earliest sign domain events — incl.
-// customer notifications — are not being delivered).
 public sealed class StatementMetrics
 {
     public const string MeterName = "SecureStatementDelivery";
 
-    // Held in a field because the Meter's lifetime is owned by the IMeterFactory (disposed when the
-    // DI container is). Keeping the reference here also prevents premature collection.
-#pragma warning disable S1450 // Intentional long-lived reference, not a local: keeps the Meter alive.
+#pragma warning disable S1450
     private readonly Meter _meter;
 #pragma warning restore S1450
     private readonly Counter<long> _uploaded;

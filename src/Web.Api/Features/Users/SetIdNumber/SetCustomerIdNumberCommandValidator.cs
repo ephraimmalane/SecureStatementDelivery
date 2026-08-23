@@ -9,7 +9,6 @@ internal sealed class SetCustomerIdNumberCommandValidator : AbstractValidator<Se
     {
         RuleFor(c => c.CustomerId).NotEmpty();
 
-        // Same full SA ID validation as registration (13 digits, valid DOB, Luhn check digit).
         RuleFor(c => c.SouthAfricanIdNumber)
             .NotEmpty()
             .Must(SouthAfricanIdValidator.IsValid)

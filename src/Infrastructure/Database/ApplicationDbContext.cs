@@ -12,9 +12,6 @@ using SharedKernel;
 
 namespace Infrastructure.Database;
 
-// Single DbContextOptions-only constructor so the context is eligible for AddDbContextPool. The
-// field encryptor is supplied via the options (UseFieldEncryption) rather than constructor
-// injection, which pooling forbids.
 public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
     : DbContext(options), IApplicationDbContext
 {
@@ -29,16 +26,12 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
         modelBuilder.HasDefaultSchema(Schemas.Default);
 
-        // Supplied via DbContextOptions (UseFieldEncryption) so the context can stay pooling-eligible
-        // with a single DbContextOptions-only constructor.
         IFieldEncryptor fieldEncryptor = this.GetService<IDbContextOptions>()
             .FindExtension<FieldEncryptionDbContextOptionsExtension>()?.Encryptor
             ?? throw new InvalidOperationException(
                 "Field encryption is not configured. Call optionsBuilder.UseFieldEncryption(...) " +
                 "wherever ApplicationDbContext options are built.");
 
-        // Encrypt the SA ID number at rest. It is a required field, so the converter always receives
-        // a non-null value.
         modelBuilder.Entity<User>()
             .Property(u => u.SouthAfricanIdNumber)
             .HasConversion(
@@ -48,9 +41,6 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        // Persist domain events as outbox rows in the SAME transaction as the state change.
-        // They are dispatched asynchronously by OutboxProcessor, so a crash after commit can
-        // never lose an event.
         AddDomainEventsAsOutboxMessages();
         return await base.SaveChangesAsync(cancellationToken);
     }

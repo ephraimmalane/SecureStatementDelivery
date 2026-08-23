@@ -18,7 +18,6 @@ public sealed class AdminUserEndpointsTests(StatementDeliveryWebApplicationFacto
             new Uri($"/customers/{Guid.NewGuid()}/south-african-id", UriKind.Relative),
             new { southAfricanIdNumber = "8001015009087" });
 
-        // The endpoint requires the Admin.Users permission; an anonymous caller is rejected.
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 }

@@ -5,11 +5,6 @@ using SharedKernel;
 
 namespace Web.Api.Features.Statements.Ingestion;
 
-// Background worker for the pull (object-storage event) ingestion path. Long-polls the source for
-// statements produced by the bank's generation pipeline, feeds each through the funnel in its own DI
-// scope, and acknowledges only after the statement is durably created. A failed message is left
-// unacknowledged so the queue redelivers and ultimately dead-letters it — safe because the funnel
-// deduplicates on the DocumentId (per customer), so a redelivered-after-success message is a no-op.
 internal sealed class StatementIngestionWorker(
     IStatementIngestionSource source,
     IServiceScopeFactory scopeFactory,
@@ -43,7 +38,7 @@ internal sealed class StatementIngestionWorker(
             {
                 break;
             }
-#pragma warning disable CA1031 // The poll loop must survive any transient fault (SQS/S3 blip) and retry.
+#pragma warning disable CA1031
             catch (Exception ex)
 #pragma warning restore CA1031
             {
@@ -72,7 +67,6 @@ internal sealed class StatementIngestionWorker(
         }
         else
         {
-            // Not acknowledged — the queue redelivers, then dead-letters after maxReceiveCount.
             logger.LogWarning(
                 "Ingestion rejected for customer {CustomerId} (document {DocumentId}): {Error}. Left for redelivery.",
                 message.CustomerId, message.DocumentId, result.Error.Code);

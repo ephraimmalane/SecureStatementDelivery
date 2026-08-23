@@ -11,9 +11,6 @@ internal sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> log
         Exception exception,
         CancellationToken cancellationToken)
     {
-        // Log the exception type and correlation ID without serialising the full exception object.
-        // Logging exception.Message is unsafe — it can contain request data (e.g. HTTP response bodies
-        // from downstream calls). The CorrelationId links this entry to the full request trace in Seq.
         string correlationId = httpContext.TraceIdentifier;
 
         logger.LogError(

@@ -8,7 +8,6 @@ internal static class ClaimsPrincipalExtensions
 {
     public static Guid GetUserId(this ClaimsPrincipal? principal)
     {
-        // Keycloak JWT: "sub" claim — mapped to ClaimTypes.NameIdentifier by AddJwtBearer.
         string? userId = principal?.FindFirstValue(ClaimTypes.NameIdentifier);
 
         return Guid.TryParse(userId, out Guid parsedUserId)
@@ -18,8 +17,6 @@ internal static class ClaimsPrincipalExtensions
 
     public static bool HasRealmRole(this ClaimsPrincipal? principal, string role)
     {
-        // Keycloak embeds realm roles as a JSON object in the "realm_access" claim:
-        // { "roles": ["admin", "customer", ...] }
         string? realmAccessJson = principal?.FindFirstValue("realm_access");
         if (realmAccessJson is null)
         {

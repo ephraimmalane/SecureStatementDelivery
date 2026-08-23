@@ -13,9 +13,6 @@ using tusdotnet.Models.Configuration;
 
 namespace Web.Api.Features.Statements.ResumableUpload;
 
-// Scoped per final-chunk request. Runs when a TUS upload reaches its declared length:
-// validates the assembled file, promotes it into permanent storage, creates the Statement,
-// publishes the result to Redis, and removes the temporary TUS file.
 internal sealed class ResumableUploadCompletedHandler(
     IApplicationDbContext context,
     IFileStorageService fileStorage,
@@ -44,10 +41,8 @@ internal sealed class ResumableUploadCompletedHandler(
             result = new ResumableUploadResult(false, null, "Upload processing failed.");
         }
 
-        // Publish the outcome so the client can poll for it cross-pod.
         await cache.SetAsync(ResumableUploadResult.CacheKey(file.Id), result, TimeSpan.FromHours(1), ct);
 
-        // Remove the temporary chunked file regardless of outcome.
         if (ctx.Store is ITusTerminationStore terminationStore)
         {
             await terminationStore.DeleteFileAsync(file.Id, ct);
@@ -70,8 +65,6 @@ internal sealed class ResumableUploadCompletedHandler(
         string description = GetString(metadata, "description", string.Empty);
         string documentId = GetString(metadata, "documentId", string.Empty);
 
-        // Idempotent replay: a re-finalised upload carrying a DocumentId we've already stored for this
-        // customer returns the original statement instead of creating a duplicate.
         if (!string.IsNullOrWhiteSpace(documentId))
         {
             Guid existingId = await context.Statements
@@ -85,20 +78,13 @@ internal sealed class ResumableUploadCompletedHandler(
             }
         }
 
-        // Reject a malformed period before storing anything, so the resumable path can't
-        // persist a value the list query's exact-match filter would never find.
         if (!Statement.IsValidPeriod(period))
         {
             return new ResumableUploadResult(false, null, StatementErrors.InvalidPeriodFormat.Description);
         }
 
-        // Canonical display name derived from the validated period — the client's file name is
-        // intentionally discarded, matching the multipart and M2M paths so every statement is named
-        // Statement_{YYYY-MM}.pdf regardless of upload channel.
         string canonicalFileName = $"Statement_{period}.pdf";
 
-        // The customer's SA ID number (decrypted by the value converter) is the mandatory open
-        // password for the statement PDF.
         string? idNumber = await context.Users
             .Where(u => u.Id == customerId && u.IsActive)
             .Select(u => u.SouthAfricanIdNumber)
@@ -106,23 +92,16 @@ internal sealed class ResumableUploadCompletedHandler(
 
         if (idNumber is null)
         {
-            // SA ID is a required, non-null column, so a null projection means the customer row
-            // does not exist.
             return new ResumableUploadResult(false, null, StatementErrors.CustomerNotFound.Description);
         }
 
         await using Stream content = await file.GetContentAsync(ct);
 
-        // Reject a file whose bytes don't match the declared content type's signature — extension and
-        // Content-Type alone can be faked. The validator reads the header and rewinds the stream.
         if (!await fileTypeValidator.IsValidAsync(contentType, content, ct))
         {
             return new ResumableUploadResult(false, null, StatementErrors.InvalidFileContent.Description);
         }
 
-        // Cross-channel idempotency: the same file (identical bytes) already stored for this customer
-        // and period resolves to the original instead of creating a duplicate. Scoped to the period so
-        // byte-identical statements for different periods are never merged. The hasher rewinds the stream.
         string contentHash = await contentHasher.ComputeSha256Async(content, ct);
 
         Guid duplicateId = await context.Statements
@@ -135,7 +114,6 @@ internal sealed class ResumableUploadCompletedHandler(
             return new ResumableUploadResult(true, duplicateId, null);
         }
 
-        // Anti-malware scan before promoting the assembled file into permanent storage.
         if (!await contentScanner.IsCleanAsync(content, ct))
         {
             return new ResumableUploadResult(false, null, StatementErrors.MalwareDetected.Description);
@@ -143,8 +121,6 @@ internal sealed class ResumableUploadCompletedHandler(
 
         content.Position = 0;
 
-        // Every statement is AES-encrypted with the customer's SA ID number as the open password.
-        // ProtectAsync also opens the PDF, so a structurally broken file is rejected here.
         Stream protectedStream;
         try
         {

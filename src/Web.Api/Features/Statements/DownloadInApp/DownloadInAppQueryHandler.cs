@@ -22,8 +22,6 @@ internal sealed class DownloadInAppQueryHandler(
         Guid userId = userContext.UserId;
         bool isAdmin = userContext.IsAdmin;
 
-        // Read-only: the statement is only inspected for ownership/active status, never mutated
-        // (the audit-log Add below is tracked independently), so skip change-tracking overhead.
         Statement? statement = await context.Statements
             .AsNoTracking()
             .SingleOrDefaultAsync(s => s.Id == query.StatementId, cancellationToken);
@@ -33,13 +31,11 @@ internal sealed class DownloadInAppQueryHandler(
             return Result.Failure<StatementFileResponse>(StatementErrors.NotFound(query.StatementId));
         }
 
-        // Ownership: a customer can only download their own statements; an admin can download any.
         if (!isAdmin && statement.CustomerId != userId)
         {
             return Result.Failure<StatementFileResponse>(StatementErrors.AccessDenied);
         }
 
-        // Every access is audited, exactly like the token-based path (no token id here).
         context.DownloadAuditLogs.Add(DownloadAuditLog.Create(
             statement.Id,
             userId,

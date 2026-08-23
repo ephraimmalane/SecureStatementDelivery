@@ -11,9 +11,6 @@ using Shouldly;
 
 namespace IntegrationTests;
 
-// End-to-end proof of the headline guarantee: a single-use download link is redeemable exactly
-// once, even though the endpoint is anonymous. The token is consumed by an atomic conditional
-// UPDATE, so the second redemption is rejected.
 public sealed class SingleUseDownloadTokenTests(StatementDeliveryWebApplicationFactory factory)
     : IClassFixture<StatementDeliveryWebApplicationFactory>
 {

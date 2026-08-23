@@ -12,10 +12,6 @@ using SharedKernel;
 
 namespace Infrastructure.Outbox;
 
-// Drains the transactional outbox: rehydrates each persisted domain event and dispatches it to
-// its handlers, then marks it processed. Runs on every replica — FOR UPDATE SKIP LOCKED ensures
-// each message is claimed by exactly one worker. This is also the natural seam to later publish
-// to Kafka/Event Hubs instead of dispatching in-process.
 internal sealed class OutboxProcessor(
     IServiceScopeFactory scopeFactory,
     IOptions<OutboxOptions> options,
@@ -37,7 +33,6 @@ internal sealed class OutboxProcessor(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // Never let a batch failure tear down the background service; the next tick retries.
                 logger.LogError(ex, "Outbox batch processing failed.");
             }
         }
@@ -56,8 +51,6 @@ internal sealed class OutboxProcessor(
             await using IDbContextTransaction transaction =
                 await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-            // Claim a batch of unprocessed messages, skipping rows other replicas hold.
-            // BatchSize is interpolated as a parameter (not concatenated) so this is injection-safe.
             List<OutboxMessage> messages = await dbContext.OutboxMessages
                 .FromSqlInterpolated($"""
                     SELECT * FROM public.outbox_messages
@@ -79,7 +72,6 @@ internal sealed class OutboxProcessor(
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    // Mark processed-with-error so one poison message can't wedge the queue.
                     message.ProcessedOnUtc = DateTime.UtcNow;
                     message.Error = ex.ToString();
                     metrics.OutboxFailed();

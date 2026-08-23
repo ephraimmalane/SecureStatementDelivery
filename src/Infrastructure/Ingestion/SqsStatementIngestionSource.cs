@@ -10,11 +10,6 @@ using Microsoft.Extensions.Options;
 
 namespace Infrastructure.Ingestion;
 
-// Pull-based ingestion backed by S3 -> SQS: the landing bucket publishes s3:ObjectCreated:*
-// notifications to an SQS queue; this source turns each notification into a StatementIngestionMessage.
-// The statement's metadata travels as S3 object user-metadata (x-amz-meta-*) set by the generator
-// when it writes the PDF, so the queue message stays a thin pointer and the bytes are streamed only
-// when the processor asks for them.
 internal sealed class SqsStatementIngestionSource(
     IAmazonSQS sqs,
     IAmazonS3 s3,
@@ -46,22 +41,16 @@ internal sealed class SqsStatementIngestionSource(
 
             if (record is null)
             {
-                // Not a statement object-created event (e.g. the s3:TestEvent emitted when the
-                // notification is first configured). Remove it so it doesn't recirculate.
                 await sqs.DeleteMessageAsync(_options.QueueUrl, sqsMessage.ReceiptHandle, cancellationToken);
                 continue;
             }
 
             string bucket = record.S3!.Bucket!.Name!;
-            // Keys arrive URL-encoded (spaces as '+', unicode percent-encoded).
             string key = Uri.UnescapeDataString(record.S3.Object!.Key!.Replace("+", " ", StringComparison.Ordinal));
 
             StatementIngestionMessage? message = await TryBuildMessageAsync(
                 bucket, key, sqsMessage.ReceiptHandle, cancellationToken);
 
-            // A message that can't be built (missing/invalid metadata) is left un-deleted on
-            // purpose: it becomes invisible until the visibility timeout, is redelivered, and after
-            // the queue's maxReceiveCount is routed to the dead-letter queue for inspection.
             if (message is not null)
             {
                 messages.Add(message);
@@ -138,7 +127,6 @@ internal sealed class SqsStatementIngestionSource(
         }
     }
 
-    // Minimal projection of the S3 event notification envelope.
     private sealed record S3EventNotification([property: JsonPropertyName("Records")] List<S3EventRecord>? Records);
 
     private sealed record S3EventRecord([property: JsonPropertyName("s3")] S3Entity? S3);

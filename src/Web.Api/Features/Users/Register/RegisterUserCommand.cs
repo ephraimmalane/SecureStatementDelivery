@@ -9,8 +9,6 @@ public sealed record RegisterUserCommand(
     string Password,
     string SouthAfricanIdNumber) : ICommand<Guid>
 {
-    // Both the password and the SA ID number are secrets (the ID doubles as the statement PDF
-    // password), so neither is ever rendered in logs/exception output.
 #pragma warning disable S2068
     public override string ToString() =>
         $"RegisterUserCommand {{ Email = {Email}, FirstName = {FirstName}, LastName = {LastName}, " +

@@ -22,11 +22,11 @@ public class UserTests
     }
 
     [Theory]
-    [InlineData(null)]          // missing
-    [InlineData("")]            // empty
-    [InlineData("   ")]         // whitespace
-    [InlineData("8001015009088")] // valid length/date but bad Luhn check digit
-    [InlineData("8013015009087")] // invalid month (13)
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("8001015009088")]
+    [InlineData("8013015009087")]
     public void Create_Should_Fail_When_IdNumber_Missing_Or_Invalid(string? input)
     {
         Result<User> result = User.Create(
@@ -52,7 +52,7 @@ public class UserTests
     {
         User user = CreateUser("8001015009087");
 
-        Result result = user.SetSouthAfricanIdNumber("8001015009088"); // bad Luhn
+        Result result = user.SetSouthAfricanIdNumber("8001015009088");
 
         result.IsFailure.ShouldBeTrue();
         result.Error.ShouldBe(UserErrors.InvalidIdNumber);

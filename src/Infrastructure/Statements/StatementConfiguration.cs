@@ -42,22 +42,14 @@ internal sealed class StatementConfiguration : IEntityTypeConfiguration<Statemen
         builder.Property(s => s.DocumentId)
             .HasMaxLength(128);
 
-        // Per-customer uniqueness across non-null document ids only, so statements uploaded without a
-        // DocumentId are unaffected. This is the hard guard that makes ingestion idempotent even under
-        // a race; scoping by customer means source ids only need to be unique within a customer.
         builder.HasIndex(s => new { s.CustomerId, s.DocumentId })
             .IsUnique()
             .HasFilter("document_id IS NOT NULL")
             .HasDatabaseName("ix_statements_customer_id_document_id");
 
-        // SHA-256 hex fingerprint of the plaintext bytes (64 chars).
         builder.Property(s => s.ContentHash)
             .HasMaxLength(64);
 
-        // Per-(customer, period) uniqueness on the content fingerprint: the same file (identical bytes)
-        // uploaded via any channel for the same period deduplicates regardless of DocumentId or file
-        // name. Scoped to the period so two legitimately-different but byte-identical statements in
-        // different periods (e.g. no-activity months) are never merged. Null is unconstrained.
         builder.HasIndex(s => new { s.CustomerId, s.Period, s.ContentHash })
             .IsUnique()
             .HasFilter("content_hash IS NOT NULL")
@@ -69,10 +61,6 @@ internal sealed class StatementConfiguration : IEntityTypeConfiguration<Statemen
         builder.HasIndex(s => s.Status);
         builder.HasIndex(s => new { s.CustomerId, s.Period });
 
-        // Business rule: at most one live statement per customer per period. The filter excludes
-        // revoked rows (status 2 = Revoked), so a correction can be re-issued once the existing
-        // statement is revoked, while history is preserved. This is the hard guard behind the
-        // handler's friendly pre-check, and it holds even under a concurrent race.
         builder.HasIndex(s => new { s.CustomerId, s.Period })
             .IsUnique()
             .HasFilter("status <> 2")

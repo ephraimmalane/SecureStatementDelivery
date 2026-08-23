@@ -9,13 +9,11 @@ public sealed record DownloadStatementQuery(
 
 public sealed class StatementFileResponse
 {
-    // Pre-signed URI path: client follows HTTP 302 and downloads directly from S3.
     public StatementFileResponse(Uri redirectUri)
     {
         RedirectUri = redirectUri;
     }
 
-    // Stream path: used when the storage provider does not support pre-signed URIs (Local).
     public StatementFileResponse(Stream fileStream, string contentType, string fileName)
     {
         FileStream = fileStream;

@@ -4,13 +4,6 @@ using SharedKernel;
 
 namespace Web.Api.Features.Statements.Upload;
 
-// Fires after any statement is stored (single-shot or resumable upload). This is the
-// integration point for notifying the customer that a new statement is available.
-//
-// IMPORTANT delivery pattern: the notification must NOT embed the document or a direct
-// download link. It should tell the customer to sign in and view the statement in the app
-// (GET /statements/{id}/content). Emailing links to sensitive financial documents is a
-// data-exposure risk; the link-based endpoint exists for explicit, opt-in share scenarios.
 internal sealed class StatementUploadedDomainEventHandler(
     ILogger<StatementUploadedDomainEventHandler> logger)
     : IDomainEventHandler<StatementUploadedDomainEvent>

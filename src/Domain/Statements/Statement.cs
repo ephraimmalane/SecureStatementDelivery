@@ -7,13 +7,9 @@ namespace Domain.Statements;
 
 public sealed partial class Statement : Entity
 {
-    // Canonical statement period: four-digit year, two-digit month 01-12 (e.g. 2024-01).
     [GeneratedRegex(@"^\d{4}-(0[1-9]|1[0-2])$")]
     private static partial Regex PeriodFormat();
 
-    // Authoritative period invariant. Every write path (multipart and resumable upload)
-    // funnels through Create, so enforcing the format here guarantees the read-side
-    // equality filter in the list query can never silently miss a statement.
     public static bool IsValidPeriod(string? period) =>
         period is not null && PeriodFormat().IsMatch(period.Trim());
 
@@ -30,16 +26,8 @@ public sealed partial class Statement : Entity
     public string Description { get; private set; } = string.Empty;
     public bool IsPasswordProtected { get; private set; }
 
-    // Optional source-assigned document identifier that makes ingestion idempotent: a redelivered
-    // upload (retried webhook / double-submit) carrying the same DocumentId for the same customer is
-    // deduplicated rather than creating a second statement. Enforced by a per-customer unique index in
-    // the persistence config. Deliberately independent of the file name (which is discarded), so the
-    // same document redelivered under a different name still deduplicates.
     public string? DocumentId { get; private set; }
 
-    // Content fingerprint (SHA-256 hex) of the plaintext bytes — a channel-, name-, and source-
-    // independent identity. Enforced by a per-customer unique index so the same file uploaded through
-    // any path deduplicates regardless of DocumentId, file name, or period.
     public string? ContentHash { get; private set; }
 
     public StatementStatus Status { get; private set; }
@@ -65,8 +53,6 @@ public sealed partial class Statement : Entity
         string? documentId = null,
         string? contentHash = null)
     {
-        // Normalise and validate the period before the entity exists, so a malformed value
-        // can never be persisted regardless of which upload path produced it.
         string normalizedPeriod = period?.Trim() ?? string.Empty;
 
         if (!IsValidPeriod(normalizedPeriod))

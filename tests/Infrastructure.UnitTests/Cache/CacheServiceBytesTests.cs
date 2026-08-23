@@ -30,7 +30,6 @@ public class CacheServiceBytesTests
         (await service.GetBytesAsync("missing")).ShouldBeNull();
     }
 
-    // Minimal in-memory IDistributedCache so the binary cache path can be tested without Redis.
     private sealed class InMemoryDistributedCache : IDistributedCache
     {
         private readonly ConcurrentDictionary<string, byte[]> _store = new();

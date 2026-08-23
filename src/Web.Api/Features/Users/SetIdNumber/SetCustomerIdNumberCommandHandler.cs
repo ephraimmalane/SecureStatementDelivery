@@ -19,8 +19,6 @@ internal sealed class SetCustomerIdNumberCommandHandler(IApplicationDbContext co
             return Result.Failure(UserErrors.NotFound(command.CustomerId));
         }
 
-        // The domain method re-validates, so an invalid value can never be persisted even if the
-        // command bypassed FluentValidation. The EF value converter encrypts it on save.
         Result result = user.SetSouthAfricanIdNumber(command.SouthAfricanIdNumber);
         if (result.IsFailure)
         {

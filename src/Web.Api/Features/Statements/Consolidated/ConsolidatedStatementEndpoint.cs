@@ -8,9 +8,6 @@ using Web.Api.Infrastructure;
 
 namespace Web.Api.Features.Statements.Consolidated;
 
-// "View 1 / 2 / 3 months" — the client maps each button to a from/to range (e.g. last 3 months:
-// from = current-2, to = current). Always streams a freshly merged PDF (never a presigned redirect,
-// since it is a generated document).
 internal sealed class ConsolidatedStatementEndpoint : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
@@ -43,7 +40,6 @@ internal sealed class ConsolidatedStatementEndpoint : IEndpoint
                 enableRangeProcessing: true);
         })
         .WithTags(Tags.Statements)
-        // Authenticated: caller's JWT + Statements.Download; ownership enforced in the handler.
         .HasPermission(Permissions.StatementsDownload);
     }
 }
