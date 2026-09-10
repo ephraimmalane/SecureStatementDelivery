@@ -6,7 +6,7 @@ using System.Net;
 
 namespace Web.Api.Features.Users.Login;
 
-internal sealed class LoginUserCommandHandler(IKeycloakClient keycloakClient)
+internal sealed class LoginUserCommandHandler(IKeycloakClient keycloakClient, TimeProvider timeProvider)
     : ICommandHandler<LoginUserCommand, LoginResponse>
 {
     public async Task<Result<LoginResponse>> Handle(LoginUserCommand command, CancellationToken cancellationToken)
@@ -21,7 +21,7 @@ internal sealed class LoginUserCommandHandler(IKeycloakClient keycloakClient)
             return Result.Success(new LoginResponse(
                 token.AccessToken,
                 token.RefreshToken,
-                DateTime.UtcNow.AddSeconds(token.ExpiresIn)));
+                timeProvider.GetUtcNow().UtcDateTime.AddSeconds(token.ExpiresIn)));
         }
         catch (KeycloakAuthException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
         {

@@ -11,7 +11,7 @@ public class KeycloakAdminTokenCacheTests
     [Fact]
     public async Task GetTokenAsync_Should_ReturnCachedToken_WithoutRefetching_WhenNotExpired()
     {
-        using var cache = new KeycloakAdminTokenCache();
+        using var cache = new KeycloakAdminTokenCache(TimeProvider.System);
         int calls = 0;
 
         Task<KeycloakTokenResponse> Fetch(CancellationToken _)
@@ -31,7 +31,7 @@ public class KeycloakAdminTokenCacheTests
     [Fact]
     public async Task GetTokenAsync_Should_Refetch_WhenCachedTokenIsWithinExpiryBuffer()
     {
-        using var cache = new KeycloakAdminTokenCache();
+        using var cache = new KeycloakAdminTokenCache(TimeProvider.System);
         int calls = 0;
 
         Task<KeycloakTokenResponse> Fetch(CancellationToken _)
@@ -51,7 +51,7 @@ public class KeycloakAdminTokenCacheTests
     [Fact]
     public async Task GetTokenAsync_Should_PerformSingleLogin_UnderConcurrency()
     {
-        using var cache = new KeycloakAdminTokenCache();
+        using var cache = new KeycloakAdminTokenCache(TimeProvider.System);
         int calls = 0;
 
         async Task<KeycloakTokenResponse> Fetch(CancellationToken ct)

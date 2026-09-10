@@ -10,7 +10,8 @@ namespace Web.Api.Features.Statements.List;
 
 internal sealed class GetStatementsQueryHandler(
     IApplicationDbContext context,
-    IUserContext userContext) : IQueryHandler<GetStatementsQuery, PagedStatementResponse>
+    IUserContext userContext,
+    TimeProvider timeProvider) : IQueryHandler<GetStatementsQuery, PagedStatementResponse>
 {
     public async Task<Result<PagedStatementResponse>> Handle(
         GetStatementsQuery query,
@@ -81,9 +82,9 @@ internal sealed class GetStatementsQueryHandler(
         return Result.Success(new PagedStatementResponse(items, totalCount, query.Page, query.PageSize));
     }
 
-    private static (string? From, string? To) ResolvePeriodWindow(GetStatementsQuery query)
+    private (string? From, string? To) ResolvePeriodWindow(GetStatementsQuery query)
     {
-        DateTime now = DateTime.UtcNow;
+        DateTime now = timeProvider.GetUtcNow().UtcDateTime;
         string MonthsAgo(int n) => now.AddMonths(-n).ToString("yyyy-MM", CultureInfo.InvariantCulture);
 
         return query.Range switch

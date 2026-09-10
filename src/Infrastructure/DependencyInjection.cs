@@ -12,7 +12,6 @@ using Infrastructure.Keycloak;
 using Infrastructure.Outbox;
 using Infrastructure.Security;
 using Infrastructure.Storage;
-using Infrastructure.Time;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -51,7 +50,7 @@ public static class DependencyInjection
 
     private static IServiceCollection AddServices(this IServiceCollection services)
     {
-        services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
+        services.AddSingleton(TimeProvider.System);
         services.AddTransient<IDomainEventsDispatcher, DomainEventsDispatcher>();
         services.AddSingleton<Observability.StatementMetrics>();
         return services;
@@ -61,21 +60,17 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.Configure<FieldEncryptionOptions>(
-            configuration.GetSection(FieldEncryptionOptions.SectionName));
-
-        string? key = configuration[$"{FieldEncryptionOptions.SectionName}:Key"];
-        if (string.IsNullOrWhiteSpace(key))
-        {
-            throw new InvalidOperationException("FieldEncryption:Key is not configured.");
-        }
-
-        Span<byte> buffer = stackalloc byte[33];
-        if (!Convert.TryFromBase64String(key, buffer, out int written) || written != 32)
-        {
-            throw new InvalidOperationException(
-                "FieldEncryption:Key must be a base64-encoded 256-bit (32-byte) key.");
-        }
+        services.AddOptions<FieldEncryptionOptions>()
+            .Bind(configuration.GetSection(FieldEncryptionOptions.SectionName))
+            .ValidateDataAnnotations()
+            .Validate(
+                options =>
+                {
+                    Span<byte> buffer = stackalloc byte[33];
+                    return Convert.TryFromBase64String(options.Key, buffer, out int written) && written == 32;
+                },
+                "FieldEncryption:Key must be a base64-encoded 256-bit (32-byte) key.")
+            .ValidateOnStart();
 
         services.AddSingleton<IFieldEncryptor, AesFieldEncryptor>();
 
@@ -240,12 +235,10 @@ public static class DependencyInjection
             .Get<KeycloakOptions>()
             ?? throw new InvalidOperationException("Keycloak configuration section is missing.");
 
-        if (string.IsNullOrWhiteSpace(keycloakOptions.BaseUrl))
-        {
-            throw new InvalidOperationException("Keycloak:BaseUrl is not configured.");
-        }
-
-        services.Configure<KeycloakOptions>(configuration.GetSection(KeycloakOptions.SectionName));
+        services.AddOptions<KeycloakOptions>()
+            .Bind(configuration.GetSection(KeycloakOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
 
         services.AddSingleton<KeycloakAdminTokenCache>();
 
@@ -279,24 +272,15 @@ public static class DependencyInjection
                 };
             });
 
-        services.Configure<DownloadTokenOptions>(
-            configuration.GetSection(DownloadTokenOptions.SectionName));
-
-        string downloadSecret = configuration[$"{DownloadTokenOptions.SectionName}:Secret"]
-            ?? throw new InvalidOperationException("DownloadToken:Secret is not configured.");
-        if (downloadSecret.Length < 32)
-        {
-            throw new InvalidOperationException("DownloadToken:Secret must be at least 32 characters (256 bits).");
-        }
-
-        string[] previousSecrets = configuration
-            .GetSection($"{DownloadTokenOptions.SectionName}:{nameof(DownloadTokenOptions.PreviousSecrets)}")
-            .Get<string[]>() ?? [];
-        if (Array.Exists(previousSecrets, s => !string.IsNullOrWhiteSpace(s) && s.Length < 32))
-        {
-            throw new InvalidOperationException(
-                "Every DownloadToken:PreviousSecrets entry must be at least 32 characters (256 bits).");
-        }
+        services.AddOptions<DownloadTokenOptions>()
+            .Bind(configuration.GetSection(DownloadTokenOptions.SectionName))
+            .ValidateDataAnnotations()
+            .Validate(
+                options => Array.TrueForAll(
+                    options.PreviousSecrets,
+                    secret => string.IsNullOrWhiteSpace(secret) || secret.Length >= 32),
+                "Every DownloadToken:PreviousSecrets entry must be at least 32 characters (256 bits).")
+            .ValidateOnStart();
 
         services.AddHttpContextAccessor();
         services.AddScoped<IUserContext, UserContext>();

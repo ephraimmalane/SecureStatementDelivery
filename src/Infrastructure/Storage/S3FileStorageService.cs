@@ -10,6 +10,7 @@ namespace Infrastructure.Storage;
 internal sealed class S3FileStorageService(
     IAmazonS3 s3Client,
     IOptions<StorageOptions> options,
+    TimeProvider timeProvider,
     ILogger<S3FileStorageService> logger) : IFileStorageService, IDisposable
 {
     private readonly S3StorageOptions _s3 = options.Value.S3;
@@ -51,7 +52,7 @@ internal sealed class S3FileStorageService(
             request.ObjectLockMode = _s3.ObjectLockMode.Equals("Compliance", StringComparison.OrdinalIgnoreCase)
                 ? ObjectLockMode.Compliance
                 : ObjectLockMode.Governance;
-            request.ObjectLockRetainUntilDate = DateTime.UtcNow.AddDays(_s3.RetentionDays);
+            request.ObjectLockRetainUntilDate = timeProvider.GetUtcNow().UtcDateTime.AddDays(_s3.RetentionDays);
         }
 
         await _transfer.UploadAsync(request, cancellationToken);
@@ -115,7 +116,7 @@ internal sealed class S3FileStorageService(
             BucketName = _bucket,
             Key = storagePath,
             Verb = HttpVerb.GET,
-            Expires = DateTime.UtcNow.AddMinutes(_presignedExpiryMinutes)
+            Expires = timeProvider.GetUtcNow().UtcDateTime.AddMinutes(_presignedExpiryMinutes)
         };
 
         string rawUrl = await s3Client.GetPreSignedURLAsync(request);

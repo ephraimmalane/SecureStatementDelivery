@@ -1,11 +1,11 @@
-using Domain.Users;
+using Domain.Users.Identity;
 using FluentValidation;
 
 namespace Web.Api.Features.Users.Register;
 
 internal sealed class RegisterUserCommandValidator : AbstractValidator<RegisterUserCommand>
 {
-    public RegisterUserCommandValidator()
+    public RegisterUserCommandValidator(IIdentityDocumentValidatorResolver identityDocuments)
     {
         RuleFor(c => c.FirstName).NotEmpty();
         RuleFor(c => c.LastName).NotEmpty();
@@ -14,7 +14,7 @@ internal sealed class RegisterUserCommandValidator : AbstractValidator<RegisterU
 
         RuleFor(c => c.SouthAfricanIdNumber)
             .NotEmpty()
-            .Must(SouthAfricanIdValidator.IsValid)
+            .Must(identityDocuments.Resolve(IdentityDocumentType.SouthAfricanId).IsValid)
             .WithMessage("South African ID number is not valid.");
     }
 }

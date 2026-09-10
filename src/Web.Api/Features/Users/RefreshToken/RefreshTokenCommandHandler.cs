@@ -7,7 +7,7 @@ using Web.Api.Features.Users.Login;
 
 namespace Web.Api.Features.Users.RefreshToken;
 
-internal sealed class RefreshTokenCommandHandler(IKeycloakClient keycloakClient)
+internal sealed class RefreshTokenCommandHandler(IKeycloakClient keycloakClient, TimeProvider timeProvider)
     : ICommandHandler<RefreshTokenCommand, LoginResponse>
 {
     public async Task<Result<LoginResponse>> Handle(RefreshTokenCommand command, CancellationToken cancellationToken)
@@ -21,7 +21,7 @@ internal sealed class RefreshTokenCommandHandler(IKeycloakClient keycloakClient)
             return Result.Success(new LoginResponse(
                 token.AccessToken,
                 token.RefreshToken,
-                DateTime.UtcNow.AddSeconds(token.ExpiresIn)));
+                timeProvider.GetUtcNow().UtcDateTime.AddSeconds(token.ExpiresIn)));
         }
         catch (KeycloakAuthException ex) when (
             ex.StatusCode == HttpStatusCode.Unauthorized ||

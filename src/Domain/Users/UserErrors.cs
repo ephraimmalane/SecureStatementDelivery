@@ -31,4 +31,8 @@ public static class UserErrors
     public static readonly Error InvalidIdNumber = Error.Problem(
         "Users.InvalidIdNumber",
         "The South African ID number is not valid.");
+
+    public static readonly Error InvalidIdentityDocument = Error.Problem(
+        "Users.InvalidIdentityDocument",
+        "The identity document number is not valid.");
 }

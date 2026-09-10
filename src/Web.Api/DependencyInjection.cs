@@ -1,5 +1,6 @@
 using Application.Abstractions.Behaviors;
 using Application.Abstractions.Messaging;
+using Domain.Users.Identity;
 using FluentValidation;
 using SharedKernel;
 using Web.Api.Features.Statements.Consolidated;
@@ -48,6 +49,13 @@ public static class DependencyInjection
             .WithScopedLifetime());
 
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly, includeInternalTypes: true);
+
+        services.Scan(scan => scan.FromAssembliesOf(typeof(IIdentityDocumentValidator))
+            .AddClasses(classes => classes.AssignableTo<IIdentityDocumentValidator>(), publicOnly: false)
+                .AsImplementedInterfaces()
+                .WithSingletonLifetime());
+
+        services.AddSingleton<IIdentityDocumentValidatorResolver, IdentityDocumentValidatorResolver>();
 
         return services;
     }

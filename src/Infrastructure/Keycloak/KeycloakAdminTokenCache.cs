@@ -1,6 +1,6 @@
 namespace Infrastructure.Keycloak;
 
-internal sealed class KeycloakAdminTokenCache : IDisposable
+internal sealed class KeycloakAdminTokenCache(TimeProvider timeProvider) : IDisposable
 {
     private static readonly TimeSpan ExpiryBuffer = TimeSpan.FromSeconds(30);
 
@@ -31,7 +31,7 @@ internal sealed class KeycloakAdminTokenCache : IDisposable
 
             Interlocked.Exchange(
                 ref _expiresAtTicks,
-                DateTimeOffset.UtcNow.AddSeconds(response.ExpiresIn).Ticks);
+                timeProvider.GetUtcNow().AddSeconds(response.ExpiresIn).UtcTicks);
             _token = response.AccessToken;
 
             return response.AccessToken;
@@ -43,7 +43,7 @@ internal sealed class KeycloakAdminTokenCache : IDisposable
     }
 
     private bool IsExpiring() =>
-        DateTimeOffset.UtcNow.Ticks >= Interlocked.Read(ref _expiresAtTicks) - ExpiryBuffer.Ticks;
+        timeProvider.GetUtcNow().UtcTicks >= Interlocked.Read(ref _expiresAtTicks) - ExpiryBuffer.Ticks;
 
     public void Dispose() => _refreshLock.Dispose();
 }

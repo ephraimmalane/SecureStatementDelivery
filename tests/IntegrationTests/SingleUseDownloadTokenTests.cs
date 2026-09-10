@@ -56,7 +56,7 @@ public sealed class SingleUseDownloadTokenTests(StatementDeliveryWebApplicationF
 
         var downloadToken = DownloadToken.Create(
             tokenId, statement.Id, customerId, tokenService.HashToken(token),
-            DateTime.UtcNow.AddMinutes(5), isSingleUse: true, ipAddress: null);
+            DateTime.UtcNow.AddMinutes(5), DateTime.UtcNow, isSingleUse: true, ipAddress: null);
 
         db.Users.Add(user);
         db.Statements.Add(statement);

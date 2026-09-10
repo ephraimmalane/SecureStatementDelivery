@@ -122,7 +122,7 @@ public sealed class DownloadTokenSecurityTests(StatementDeliveryWebApplicationFa
 
         var downloadToken = DownloadToken.Create(
             tokenId, statement.Id, customerId, tokenService.HashToken(token),
-            expiry, isSingleUse: true, ipAddress: ipAddress);
+            expiry, DateTime.UtcNow, isSingleUse: true, ipAddress: ipAddress);
 
         db.Users.Add(user);
         db.Statements.Add(statement);

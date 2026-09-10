@@ -13,7 +13,8 @@ namespace Web.Api.Features.Statements.GenerateDownloadLink;
 internal sealed class GenerateDownloadLinkCommandHandler(
     IApplicationDbContext context,
     IDownloadTokenService downloadTokenService,
-    IUserContext userContext) : ICommandHandler<GenerateDownloadLinkCommand, DownloadLinkResponse>
+    IUserContext userContext,
+    TimeProvider timeProvider) : ICommandHandler<GenerateDownloadLinkCommand, DownloadLinkResponse>
 {
     public async Task<Result<DownloadLinkResponse>> Handle(
         GenerateDownloadLinkCommand command,
@@ -42,7 +43,8 @@ internal sealed class GenerateDownloadLinkCommandHandler(
             return Result.Failure<DownloadLinkResponse>(StatementErrors.AlreadyRevoked);
         }
 
-        DateTime expiresAt = DateTime.UtcNow.AddMinutes(command.ExpiryMinutes);
+        DateTime utcNow = timeProvider.GetUtcNow().UtcDateTime;
+        DateTime expiresAt = utcNow.AddMinutes(command.ExpiryMinutes);
 
         (string rawToken, Guid tokenId) = downloadTokenService.GenerateToken(
             statement.Id,
@@ -57,6 +59,7 @@ internal sealed class GenerateDownloadLinkCommandHandler(
             requestingUserId,
             tokenHash,
             expiresAt,
+            utcNow,
             command.IsSingleUse,
             command.RequestIpAddress);
 

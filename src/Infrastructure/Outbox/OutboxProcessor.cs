@@ -16,6 +16,7 @@ internal sealed class OutboxProcessor(
     IServiceScopeFactory scopeFactory,
     IOptions<OutboxOptions> options,
     StatementMetrics metrics,
+    TimeProvider timeProvider,
     ILogger<OutboxProcessor> logger) : BackgroundService
 {
     private readonly OutboxOptions _options = options.Value;
@@ -67,12 +68,12 @@ internal sealed class OutboxProcessor(
                 {
                     IDomainEvent domainEvent = Deserialize(message);
                     await dispatcher.DispatchAsync([domainEvent], cancellationToken);
-                    message.ProcessedOnUtc = DateTime.UtcNow;
+                    message.ProcessedOnUtc = timeProvider.GetUtcNow().UtcDateTime;
                     metrics.OutboxProcessed();
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    message.ProcessedOnUtc = DateTime.UtcNow;
+                    message.ProcessedOnUtc = timeProvider.GetUtcNow().UtcDateTime;
                     message.Error = ex.ToString();
                     metrics.OutboxFailed();
                     logger.LogError(ex, "Failed to process outbox message {MessageId}.", message.Id);

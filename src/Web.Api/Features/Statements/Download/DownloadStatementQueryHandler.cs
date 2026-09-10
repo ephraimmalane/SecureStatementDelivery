@@ -13,7 +13,8 @@ namespace Web.Api.Features.Statements.Download;
 internal sealed class DownloadStatementQueryHandler(
     IApplicationDbContext context,
     IDownloadTokenService downloadTokenService,
-    IFileStorageService fileStorage) : IQueryHandler<DownloadStatementQuery, StatementFileResponse>
+    IFileStorageService fileStorage,
+    TimeProvider timeProvider) : IQueryHandler<DownloadStatementQuery, StatementFileResponse>
 {
     public async Task<Result<StatementFileResponse>> Handle(
         DownloadStatementQuery query,
@@ -39,7 +40,9 @@ internal sealed class DownloadStatementQueryHandler(
             return Result.Failure<StatementFileResponse>(DownloadTokenErrors.TokenInvalid);
         }
 
-        if (downloadToken.IsExpired)
+        DateTime utcNow = timeProvider.GetUtcNow().UtcDateTime;
+
+        if (downloadToken.IsExpired(utcNow))
         {
             return Result.Failure<StatementFileResponse>(DownloadTokenErrors.TokenExpired);
         }
@@ -81,7 +84,7 @@ internal sealed class DownloadStatementQueryHandler(
                 .ExecuteUpdateAsync(
                     setters => setters
                         .SetProperty(t => t.IsUsed, true)
-                        .SetProperty(t => t.UsedAt, DateTime.UtcNow),
+                        .SetProperty(t => t.UsedAt, utcNow),
                     cancellationToken);
 
             if (consumed == 0)

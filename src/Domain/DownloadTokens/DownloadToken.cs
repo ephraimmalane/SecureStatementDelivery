@@ -17,8 +17,8 @@ public sealed class DownloadToken
     public DateTime? UsedAt { get; private set; }
     public string? IpAddress { get; private set; }
 
-    public bool IsExpired => DateTime.UtcNow > ExpiresAt;
-    public bool IsValid => !IsUsed && !IsExpired;
+    public bool IsExpired(DateTime utcNow) => utcNow > ExpiresAt;
+    public bool IsValid(DateTime utcNow) => !IsUsed && !IsExpired(utcNow);
 
     public static DownloadToken Create(
         Guid id,
@@ -26,6 +26,7 @@ public sealed class DownloadToken
         Guid userId,
         string tokenHash,
         DateTime expiresAt,
+        DateTime createdAt,
         bool isSingleUse = true,
         string? ipAddress = null) =>
         new()
@@ -37,13 +38,13 @@ public sealed class DownloadToken
             ExpiresAt = expiresAt,
             IsSingleUse = isSingleUse,
             IsUsed = false,
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = createdAt,
             IpAddress = ipAddress
         };
 
-    public Result MarkAsUsed()
+    public Result MarkAsUsed(DateTime utcNow)
     {
-        if (IsExpired)
+        if (IsExpired(utcNow))
         {
             return Result.Failure(DownloadTokenErrors.TokenExpired);
         }
@@ -54,7 +55,7 @@ public sealed class DownloadToken
         }
 
         IsUsed = true;
-        UsedAt = DateTime.UtcNow;
+        UsedAt = utcNow;
 
         return Result.Success();
     }

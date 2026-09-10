@@ -6,7 +6,7 @@ var downloadTokenSecret = builder.AddParameter("download-token-secret", secret: 
 
 var postgres = builder.AddPostgres("postgres")
     .WithDataVolume()
-    .WithPgAdmin();
+    .Db();
 var database = postgres.AddDatabase("Database", databaseName: "secure_statements");
 
 var redis = builder.AddRedis("Redis")
