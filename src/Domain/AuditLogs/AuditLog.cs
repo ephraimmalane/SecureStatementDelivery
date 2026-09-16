@@ -1,11 +1,12 @@
 namespace Domain.AuditLogs;
 
-public sealed class DownloadAuditLog
+public sealed class AuditLog
 {
-    private DownloadAuditLog() { }
+    private AuditLog() { }
 
     public Guid Id { get; private set; }
-    public Guid StatementId { get; private set; }
+
+    public Guid? StatementId { get; private set; }
     public Guid UserId { get; private set; }
     public Guid? DownloadTokenId { get; private set; }
     public AuditAction Action { get; private set; }
@@ -14,8 +15,8 @@ public sealed class DownloadAuditLog
     public DateTime OccurredAt { get; private set; }
     public string? AdditionalData { get; private set; }
 
-    public static DownloadAuditLog Create(
-        Guid statementId,
+    public static AuditLog Create(
+        Guid? statementId,
         Guid userId,
         AuditAction action,
         Guid? downloadTokenId = null,

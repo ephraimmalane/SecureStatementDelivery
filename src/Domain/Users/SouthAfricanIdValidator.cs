@@ -23,10 +23,6 @@ public static class SouthAfricanIdValidator
             && PassesLuhnCheck(id);
     }
 
-    // Position 11 (index 10) in YYMMDDSSSSCAZ is the citizenship classification:
-    // 0 = SA citizen, 1 = permanent resident, 2 = refugee. Any other value is a data-entry error.
-    // The gender digits (SSSS) and the obsolete race digit (position 12) are informational only
-    // and are intentionally not validated, matching SARS eFiling behaviour.
     private static bool HasValidCitizenshipClassification(string id) =>
         id[10] is '0' or '1' or '2';
 

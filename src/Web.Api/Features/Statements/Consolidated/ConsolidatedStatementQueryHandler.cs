@@ -85,10 +85,10 @@ internal sealed class ConsolidatedStatementQueryHandler(
 
         foreach (Statement statement in statements)
         {
-            context.DownloadAuditLogs.Add(DownloadAuditLog.Create(
+            context.AuditLogs.Add(AuditLog.Create(
                 statement.Id,
                 userId,
-                AuditAction.StatementDownloaded,
+                AuditAction.DownloadAuthorized,
                 downloadTokenId: null,
                 query.IpAddress,
                 query.UserAgent));

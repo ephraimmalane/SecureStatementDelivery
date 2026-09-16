@@ -23,7 +23,7 @@ namespace Infrastructure.Database.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Domain.AuditLogs.DownloadAuditLog", b =>
+            modelBuilder.Entity("Domain.AuditLogs.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -51,7 +51,7 @@ namespace Infrastructure.Database.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("occurred_at");
 
-                    b.Property<Guid>("StatementId")
+                    b.Property<Guid?>("StatementId")
                         .HasColumnType("uuid")
                         .HasColumnName("statement_id");
 
@@ -65,21 +65,21 @@ namespace Infrastructure.Database.Migrations
                         .HasColumnName("user_id");
 
                     b.HasKey("Id")
-                        .HasName("pk_download_audit_logs");
+                        .HasName("pk_audit_logs");
 
                     b.HasIndex("Action")
-                        .HasDatabaseName("ix_download_audit_logs_action");
+                        .HasDatabaseName("ix_audit_logs_action");
 
                     b.HasIndex("OccurredAt")
-                        .HasDatabaseName("ix_download_audit_logs_occurred_at");
+                        .HasDatabaseName("ix_audit_logs_occurred_at");
 
                     b.HasIndex("StatementId")
-                        .HasDatabaseName("ix_download_audit_logs_statement_id");
+                        .HasDatabaseName("ix_audit_logs_statement_id");
 
                     b.HasIndex("UserId")
-                        .HasDatabaseName("ix_download_audit_logs_user_id");
+                        .HasDatabaseName("ix_audit_logs_user_id");
 
-                    b.ToTable("download_audit_logs", "public");
+                    b.ToTable("audit_logs", "public");
                 });
 
             modelBuilder.Entity("Domain.DownloadTokens.DownloadToken", b =>
@@ -252,11 +252,6 @@ namespace Infrastructure.Database.Migrations
                     b.HasIndex("UploadedByAdminId")
                         .HasDatabaseName("ix_statements_uploaded_by_admin_id");
 
-                    b.HasIndex("CustomerId", "Period", "ContentHash")
-                        .IsUnique()
-                        .HasDatabaseName("ix_statements_customer_id_period_content_hash")
-                        .HasFilter("content_hash IS NOT NULL");
-
                     b.HasIndex("CustomerId", "DocumentId")
                         .IsUnique()
                         .HasDatabaseName("ix_statements_customer_id_document_id")
@@ -266,6 +261,11 @@ namespace Infrastructure.Database.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_statements_customer_id_period_active")
                         .HasFilter("status <> 2");
+
+                    b.HasIndex("CustomerId", "Period", "ContentHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_statements_customer_id_period_content_hash")
+                        .HasFilter("content_hash IS NOT NULL");
 
                     b.ToTable("statements", "public");
                 });
@@ -336,6 +336,10 @@ namespace Infrastructure.Database.Migrations
                         .HasColumnType("text")
                         .HasColumnName("error");
 
+                    b.Property<DateTime?>("NextAttemptUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_attempt_utc");
+
                     b.Property<DateTime>("OccurredOnUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("occurred_on_utc");
@@ -343,6 +347,12 @@ namespace Infrastructure.Database.Migrations
                     b.Property<DateTime?>("ProcessedOnUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("processed_on_utc");
+
+                    b.Property<int>("RetryCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("retry_count");
 
                     b.Property<string>("Type")
                         .IsRequired()

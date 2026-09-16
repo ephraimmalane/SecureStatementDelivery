@@ -23,3 +23,37 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./monitoring/local/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/local/rules.yml:/etc/prometheus/rules.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - web-api
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      # Zero-friction local viewing: browse dashboards without logging in.
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - ./monitoring/local/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      # Dashboard provider + dashboard JSON are shared with k8s (single source of truth).
+      - ./k8s/monitoring/provisioning/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./k8s/monitoring/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus

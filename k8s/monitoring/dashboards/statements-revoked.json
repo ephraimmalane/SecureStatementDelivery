@@ -1,0 +1,59 @@
+{
+  "uid": "statements-revoked",
+  "title": "Secure Statement Delivery — Statement Revocations",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Revocations (selected range)",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "area" },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(statements_revoked_total{job=\"web-api\"}[$__range]))", "legendFormat": "revoked" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Cumulative revocations (all time)",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        { "refId": "A", "expr": "sum(statements_revoked_total{job=\"web-api\"})", "legendFormat": "total" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Revocation rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(statements_revoked_total{job=\"web-api\"}[5m]))", "legendFormat": "revoked/s" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Revocations vs uploads",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(statements_revoked_total{job=\"web-api\"}[5m]))", "legendFormat": "revoked" },
+        { "refId": "B", "expr": "sum(rate(statements_uploaded_total{job=\"web-api\"}[5m]))", "legendFormat": "uploaded" }
+      ]
+    }
+  ]
+}

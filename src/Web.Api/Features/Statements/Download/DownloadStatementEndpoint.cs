@@ -43,7 +43,7 @@ internal sealed class DownloadStatementEndpoint : IEndpoint
                     enableRangeProcessing: true);
         })
         .WithTags(Tags.Statements)
-        .AllowAnonymous()
+        .AllowAnonymous() 
         .RequireRateLimiting("api");
     }
 }

@@ -6,11 +6,6 @@ namespace Domain.UnitTests.Users;
 
 public class UserTests
 {
-    private const string ValidSaId = "8001015009087";
-
-    private static User CreateUser(string saId = ValidSaId) =>
-        User.Create(Guid.NewGuid(), "c@example.com", "Test", "Customer", saId).Value;
-
     [Fact]
     public void Create_Should_Succeed_And_StoreTrimmedIdNumber_When_Valid()
     {
@@ -34,28 +29,5 @@ public class UserTests
 
         result.IsFailure.ShouldBeTrue();
         result.Error.ShouldBe(UserErrors.InvalidIdNumber);
-    }
-
-    [Fact]
-    public void SetSouthAfricanIdNumber_Should_Store_When_Valid()
-    {
-        User user = CreateUser();
-
-        Result result = user.SetSouthAfricanIdNumber("  8001015009087  ");
-
-        result.IsSuccess.ShouldBeTrue();
-        user.SouthAfricanIdNumber.ShouldBe("8001015009087");
-    }
-
-    [Fact]
-    public void SetSouthAfricanIdNumber_Should_Fail_And_NotChange_When_Invalid()
-    {
-        User user = CreateUser("8001015009087");
-
-        Result result = user.SetSouthAfricanIdNumber("8001015009088");
-
-        result.IsFailure.ShouldBeTrue();
-        result.Error.ShouldBe(UserErrors.InvalidIdNumber);
-        user.SouthAfricanIdNumber.ShouldBe("8001015009087");
     }
 }

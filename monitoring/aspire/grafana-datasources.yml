@@ -1,0 +1,13 @@
+# Datasource provisioning for Grafana under the .NET Aspire AppHost.
+#
+# Grafana reaches Prometheus over the Docker Desktop host gateway on the port published by the
+# Aspire "prometheus" container endpoint (9090), rather than by container DNS. The uid MUST stay
+# "prometheus" to match the datasource references baked into the dashboard JSON files.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://host.docker.internal:9090
+    isDefault: true

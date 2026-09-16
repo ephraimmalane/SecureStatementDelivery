@@ -17,7 +17,7 @@ public static class StatementErrors
         $"A statement already exists for this customer for period {period}. Revoke the existing " +
         "statement before uploading a replacement.");
 
-    public static readonly Error AccessDenied = Error.Failure(
+    public static readonly Error AccessDenied = Error.Forbidden(
         "Statements.AccessDenied",
         "You do not have access to this statement.");
 

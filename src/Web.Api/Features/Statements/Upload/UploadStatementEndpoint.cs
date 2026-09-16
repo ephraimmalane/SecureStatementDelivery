@@ -12,7 +12,8 @@ internal sealed class UploadStatementEndpoint : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapPost("statements/upload", async (
+        app.MapPost("customers/{customerId:guid}/statements", async (
+            Guid customerId,
             IFormFile file,
             [Microsoft.AspNetCore.Mvc.FromForm] Request request,
             ICommandHandler<UploadStatementCommand, Guid> handler,
@@ -30,11 +31,11 @@ internal sealed class UploadStatementEndpoint : IEndpoint
             string? documentId = httpContext.Request.Headers["Document-Id"].FirstOrDefault();
 
             var command = new UploadStatementCommand(
-                request.CustomerId,
+                customerId,
                 file.FileName,
                 fileStream,
                 file.ContentType,
-                request.Period,
+                request.Period ?? string.Empty,
                 request.Description ?? string.Empty,
                 userContext.UserId,
                 documentId);
@@ -42,7 +43,7 @@ internal sealed class UploadStatementEndpoint : IEndpoint
             Result<Guid> result = await handler.Handle(command, cancellationToken);
 
             return result.Match(
-                id => Results.Created($"/api/v1/statements/{id}", new { Id = id }),
+                id => Results.Created($"/statements/{id}", new { Id = id }),
                 CustomResults.Problem);
         })
         .WithTags(Tags.Statements)
@@ -51,5 +52,5 @@ internal sealed class UploadStatementEndpoint : IEndpoint
         .Accepts<IFormFile>("multipart/form-data");
     }
 
-    public sealed record Request(Guid CustomerId, string Period, string? Description);
+    public sealed record Request(string? Period, string? Description);
 }

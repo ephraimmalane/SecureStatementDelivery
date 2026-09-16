@@ -6,6 +6,11 @@
   "ssoSessionMaxLifespan": 2592000,
   "revokeRefreshToken": true,
   "refreshTokenMaxReuse": 0,
+  "passwordPolicy": "length(12) and upperCase(1) and lowerCase(1) and digits(1) and specialChars(1) and notUsername(undefined) and passwordHistory(3)",
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "maxFailureWaitSeconds": 900,
   "roles": {
     "realm": [
       {
@@ -97,6 +102,25 @@
     }
   ],
   "users": [
+    {
+      "id": "0a0a0a0a-0000-4000-a000-0000000000ad",
+      "username": "admin@securestatements.local",
+      "email": "admin@securestatements.local",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Platform",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Adm1n!Local2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin"
+      ]
+    },
     {
       "username": "service-account-statement-generator",
       "enabled": true,

@@ -65,7 +65,7 @@ internal sealed class GenerateDownloadLinkCommandHandler(
 
         context.DownloadTokens.Add(downloadToken);
 
-        context.DownloadAuditLogs.Add(DownloadAuditLog.Create(
+        context.AuditLogs.Add(AuditLog.Create(
             statement.Id,
             requestingUserId,
             AuditAction.DownloadLinkGenerated,

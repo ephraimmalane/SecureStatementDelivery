@@ -28,8 +28,15 @@ public static class EndpointExtensions
 
         IEndpointRouteBuilder builder = routeGroupBuilder is null ? app : routeGroupBuilder;
 
+        bool isProduction = app.Environment.IsProduction();
+
         foreach (IEndpoint endpoint in endpoints)
         {
+            if (isProduction && endpoint is IDevelopmentOnlyEndpoint)
+            {
+                continue;
+            }
+
             endpoint.MapEndpoint(builder);
         }
 

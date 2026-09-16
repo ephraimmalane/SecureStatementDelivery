@@ -19,6 +19,8 @@ internal sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<Outb
 
         builder.Property(m => m.OccurredOnUtc).IsRequired();
 
+        builder.Property(m => m.RetryCount).HasDefaultValue(0);
+
         builder.HasIndex(m => m.OccurredOnUtc)
             .HasFilter("processed_on_utc IS NULL");
     }

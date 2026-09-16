@@ -46,16 +46,5 @@ public sealed class User : Entity
         return user;
     }
 
-    public Result SetSouthAfricanIdNumber(string idNumber)
-    {
-        if (!SouthAfricanIdValidator.IsValid(idNumber))
-        {
-            return Result.Failure(UserErrors.InvalidIdNumber);
-        }
-
-        SouthAfricanIdNumber = idNumber.Trim();
-        return Result.Success();
-    }
-
     public void Deactivate() => IsActive = false;
 }

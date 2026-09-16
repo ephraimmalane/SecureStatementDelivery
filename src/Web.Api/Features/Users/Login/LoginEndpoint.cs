@@ -6,7 +6,7 @@ using Web.Api.Infrastructure;
 
 namespace Web.Api.Features.Users.Login;
 
-internal sealed class LoginEndpoint : IEndpoint
+internal sealed class LoginEndpoint : IDevelopmentOnlyEndpoint
 {
     public sealed record Request(string Email, string Password)
     {

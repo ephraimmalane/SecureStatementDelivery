@@ -1,0 +1,16 @@
+# Plain Prometheus recording rules mirroring k8s/monitoring/prometheus-rules.yaml (which uses
+# the PrometheusRule CRD, unavailable without the Operator). These make the web-api dashboard's
+# error-ratio and latency panels render locally. Keep in sync with the k8s copy.
+groups:
+  - name: web-api.slo
+    interval: 30s
+    rules:
+      - record: job:web_api_request_error_ratio:5m
+        expr: |
+          sum(rate(http_server_request_duration_seconds_count{job="web-api",http_response_status_code=~"5.."}[5m]))
+          /
+          sum(rate(http_server_request_duration_seconds_count{job="web-api"}[5m]))
+      - record: job:web_api_request_latency_p95:5m
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_server_request_duration_seconds_bucket{job="web-api"}[5m])) by (le))

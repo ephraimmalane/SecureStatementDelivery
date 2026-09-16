@@ -28,7 +28,7 @@ public sealed class DownloadTokenSecurityTests(StatementDeliveryWebApplicationFa
 
         ((int)response.StatusCode).ShouldBeInRange(400, 499);
         (await TokenIsUsedAsync(seeded.TokenId)).ShouldBeFalse();
-        (await HasAuditAsync(seeded.StatementId, AuditAction.StatementDownloaded)).ShouldBeFalse();
+        (await HasAuditAsync(seeded.StatementId, AuditAction.DownloadAuthorized)).ShouldBeFalse();
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public sealed class DownloadTokenSecurityTests(StatementDeliveryWebApplicationFa
     }
 
     [Fact]
-    public async Task IpBoundToken_Should_Succeed_FromMatchingIp_AndAuditDownloaded()
+    public async Task IpBoundToken_Should_Succeed_FromMatchingIp_AndAuditAuthorized()
     {
         HttpClient client = _factory.CreateClient();
         SeededToken seeded = await SeedAsync(ipAddress: "198.51.100.7");
@@ -70,11 +70,11 @@ public sealed class DownloadTokenSecurityTests(StatementDeliveryWebApplicationFa
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         (await TokenIsUsedAsync(seeded.TokenId)).ShouldBeTrue();
-        (await HasAuditAsync(seeded.StatementId, AuditAction.StatementDownloaded)).ShouldBeTrue();
+        (await HasAuditAsync(seeded.StatementId, AuditAction.DownloadAuthorized)).ShouldBeTrue();
     }
 
     [Fact]
-    public async Task SuccessfulDownload_Should_WriteDownloadedAuditRow()
+    public async Task SuccessfulDownload_Should_WriteAuthorizedAuditRow()
     {
         HttpClient client = _factory.CreateClient();
         SeededToken seeded = await SeedAsync();
@@ -82,7 +82,7 @@ public sealed class DownloadTokenSecurityTests(StatementDeliveryWebApplicationFa
         HttpResponseMessage response = await client.GetAsync(DownloadUrl(seeded.Token));
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        (await HasAuditAsync(seeded.StatementId, AuditAction.StatementDownloaded)).ShouldBeTrue();
+        (await HasAuditAsync(seeded.StatementId, AuditAction.DownloadAuthorized)).ShouldBeTrue();
     }
 
     private static Uri DownloadUrl(string token) =>
@@ -149,7 +149,7 @@ public sealed class DownloadTokenSecurityTests(StatementDeliveryWebApplicationFa
         using IServiceScope scope = _factory.Services.CreateScope();
         ApplicationDbContext db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        return await db.DownloadAuditLogs
+        return await db.AuditLogs
             .AsNoTracking()
             .AnyAsync(a => a.StatementId == statementId && a.Action == action);
     }

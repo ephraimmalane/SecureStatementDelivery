@@ -7,11 +7,11 @@ public class RequestContextLoggingMiddleware(RequestDelegate next)
 {
     private const string CorrelationIdHeaderName = "Correlation-Id";
 
-    public Task Invoke(HttpContext context)
+    public async Task Invoke(HttpContext context)
     {
         using (LogContext.PushProperty("CorrelationId", GetCorrelationId(context)))
         {
-            return next.Invoke(context);
+            await next.Invoke(context);
         }
     }
 

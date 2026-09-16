@@ -31,7 +31,7 @@ internal sealed class RevokeStatementCommandHandler(
             return revokeResult;
         }
 
-        context.DownloadAuditLogs.Add(DownloadAuditLog.Create(
+        context.AuditLogs.Add(AuditLog.Create(
             statement.Id,
             adminId,
             AuditAction.StatementRevoked,

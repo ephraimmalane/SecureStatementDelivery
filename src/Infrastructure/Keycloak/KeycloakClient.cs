@@ -3,23 +3,24 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Application.Abstractions.Authentication;
 using Domain.Users;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Options;
-using SharedKernel;
 
 namespace Infrastructure.Keycloak;
 
 internal sealed class KeycloakClient(
     HttpClient httpClient,
     IOptions<KeycloakOptions> options,
-    KeycloakAdminTokenCache adminTokenCache) : IKeycloakClient
+    KeycloakAdminTokenCache adminTokenCache) : IIdentityProviderClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public async Task<KeycloakTokenResponse> LoginAsync(
+    public async Task<AuthenticationResult> LoginAsync(
         string email,
         string password,
         CancellationToken cancellationToken)
@@ -34,10 +35,11 @@ internal sealed class KeycloakClient(
             ["scope"] = "openid"
         };
 
-        return await PostTokenAsync(options.Value.TokenUrl, form, cancellationToken);
+        KeycloakTokenResponse token = await PostTokenAsync(options.Value.TokenUrl, form, cancellationToken);
+        return ToAuthenticationResult(token);
     }
 
-    public async Task<KeycloakTokenResponse> RefreshTokenAsync(
+    public async Task<AuthenticationResult> RefreshTokenAsync(
         string refreshToken,
         CancellationToken cancellationToken)
     {
@@ -49,8 +51,12 @@ internal sealed class KeycloakClient(
             ["refresh_token"] = refreshToken
         };
 
-        return await PostTokenAsync(options.Value.TokenUrl, form, cancellationToken);
+        KeycloakTokenResponse token = await PostTokenAsync(options.Value.TokenUrl, form, cancellationToken);
+        return ToAuthenticationResult(token);
     }
+
+    private static AuthenticationResult ToAuthenticationResult(KeycloakTokenResponse token) =>
+        new(token.AccessToken, token.RefreshToken, token.ExpiresIn);
 
     public async Task<Guid> RegisterUserAsync(
         string email,
@@ -59,6 +65,11 @@ internal sealed class KeycloakClient(
         string password,
         CancellationToken cancellationToken)
     {
+
+        if (firstName != null)
+        {
+            throw new IdentityUserConflictException(UserErrors.InvalidIdNumber);
+        }
         string adminToken = await GetMasterAdminTokenAsync(cancellationToken);
 
         var userBody = new
@@ -88,7 +99,7 @@ internal sealed class KeycloakClient(
 
         if (createResponse.StatusCode == HttpStatusCode.Conflict)
         {
-            throw new KeycloakRegistrationException(UserErrors.EmailNotUnique);
+            throw new IdentityUserConflictException(UserErrors.EmailNotUnique);
         }
 
         if (!createResponse.IsSuccessStatusCode)
@@ -139,13 +150,13 @@ internal sealed class KeycloakClient(
         return null;
     }
 
-    public async Task DeleteUserAsync(Guid keycloakUserId, CancellationToken cancellationToken)
+    public async Task DeleteUserAsync(Guid userId, CancellationToken cancellationToken)
     {
         string adminToken = await GetMasterAdminTokenAsync(cancellationToken);
 
         using HttpResponseMessage response = await SendWithBearerAsync(
             HttpMethod.Delete,
-            $"{options.Value.AdminUsersUrl}/{keycloakUserId}",
+            $"{options.Value.AdminUsersUrl}/{userId}",
             adminToken,
             content: null,
             cancellationToken);
@@ -219,26 +230,47 @@ internal sealed class KeycloakClient(
             Content = new FormUrlEncodedContent(form)
         };
 
-        using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
-
-        string body = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
+        HttpResponseMessage response;
+        try
         {
-            throw new KeycloakAuthException(response.StatusCode, body);
+            response = await httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new IdentityProviderException(HttpStatusCode.ServiceUnavailable, ex.Message);
         }
 
-        return JsonSerializer.Deserialize<KeycloakTokenResponse>(body, JsonOptions)
-            ?? throw new InvalidOperationException("Failed to deserialize Keycloak token response.");
+        using (response)
+        {
+            string body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new IdentityProviderException(response.StatusCode, body, TryParseOAuthError(body));
+            }
+
+            return JsonSerializer.Deserialize<KeycloakTokenResponse>(body, JsonOptions)
+                ?? throw new InvalidOperationException("Failed to deserialize Keycloak token response.");
+        }
     }
-}
 
-public sealed class KeycloakAuthException(HttpStatusCode statusCode, string body) : Exception(body)
-{
-    public HttpStatusCode StatusCode { get; } = statusCode;
-}
+    private static string? TryParseOAuthError(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
 
-public sealed class KeycloakRegistrationException(Error domainError) : Exception(domainError.Description)
-{
-    public Error DomainError { get; } = domainError;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.TryGetProperty("error", out JsonElement error)
+                ? error.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }

@@ -12,7 +12,11 @@ public static class UserErrors
         "Users.NotFoundByEmail",
         "No account was found with the provided credentials.");
 
-    public static readonly Error InvalidCredentials = Error.Failure(
+    public static readonly Error CustomerNotFound = Error.NotFound(
+        "Users.CustomerNotFound",
+        "No customer was found with the provided email address.");
+
+    public static readonly Error InvalidCredentials = Error.Unauthorized(
         "Users.InvalidCredentials",
         "The email or password is incorrect.");
 
@@ -24,7 +28,7 @@ public static class UserErrors
         "Users.AccountInactive",
         "This account has been deactivated. Please contact support.");
 
-    public static readonly Error InvalidRefreshToken = Error.Failure(
+    public static readonly Error InvalidRefreshToken = Error.Unauthorized(
         "Users.InvalidRefreshToken",
         "The refresh token is invalid or has expired.");
 

@@ -6,10 +6,10 @@ namespace Domain.UnitTests.Users;
 public class SouthAfricanIdValidatorTests
 {
     [Theory]
-    [InlineData("8001015009087")] // citizenship digit 0 (SA citizen)
+    [InlineData("8001015009087")]
     [InlineData("  8001015009087  ")]
-    [InlineData("8001015009186")] // citizenship digit 1 (permanent resident)
-    [InlineData("8001015009285")] // citizenship digit 2 (refugee)
+    [InlineData("8001015009186")]
+    [InlineData("8001015009285")]
     public void IsValid_Should_Accept_WellFormedId(string id)
     {
         SouthAfricanIdValidator.IsValid(id).ShouldBeTrue();
@@ -26,7 +26,7 @@ public class SouthAfricanIdValidatorTests
     [InlineData("8013015009087")]
     [InlineData("8000015009087")]
     [InlineData("8002305009087")]
-    [InlineData("8001015009384")] // invalid citizenship digit 3 (passes DOB + Luhn)
+    [InlineData("8001015009384")]
     public void IsValid_Should_Reject_InvalidId(string? id)
     {
         SouthAfricanIdValidator.IsValid(id).ShouldBeFalse();

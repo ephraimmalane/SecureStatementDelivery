@@ -1,0 +1,15 @@
+# Local Prometheus for docker-compose. Scrapes the web-api /metrics endpoint on the
+# compose network. The job label MUST stay "web-api" so it matches the dashboard queries
+# ({job="web-api"}) and the recording rules below.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules.yml
+
+scrape_configs:
+  - job_name: web-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["web-api:8080"]

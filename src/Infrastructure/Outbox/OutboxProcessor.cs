@@ -1,7 +1,7 @@
 using System.Text.Json;
+using Application.Abstractions.Observability;
 using Infrastructure.Database;
 using Infrastructure.DomainEvents;
-using Infrastructure.Observability;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,7 +15,7 @@ namespace Infrastructure.Outbox;
 internal sealed class OutboxProcessor(
     IServiceScopeFactory scopeFactory,
     IOptions<OutboxOptions> options,
-    StatementMetrics metrics,
+    IStatementMetrics metrics,
     TimeProvider timeProvider,
     ILogger<OutboxProcessor> logger) : BackgroundService
 {
@@ -52,10 +52,13 @@ internal sealed class OutboxProcessor(
             await using IDbContextTransaction transaction =
                 await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
+            DateTime now = timeProvider.GetUtcNow().UtcDateTime;
+
             List<OutboxMessage> messages = await dbContext.OutboxMessages
                 .FromSqlInterpolated($"""
                     SELECT * FROM public.outbox_messages
                     WHERE processed_on_utc IS NULL
+                      AND (next_attempt_utc IS NULL OR next_attempt_utc <= {now})
                     ORDER BY occurred_on_utc
                     LIMIT {_options.BatchSize}
                     FOR UPDATE SKIP LOCKED
@@ -69,14 +72,27 @@ internal sealed class OutboxProcessor(
                     IDomainEvent domainEvent = Deserialize(message);
                     await dispatcher.DispatchAsync([domainEvent], cancellationToken);
                     message.ProcessedOnUtc = timeProvider.GetUtcNow().UtcDateTime;
+                    message.Error = null;
                     metrics.OutboxProcessed();
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    message.ProcessedOnUtc = timeProvider.GetUtcNow().UtcDateTime;
-                    message.Error = ex.ToString();
+                    bool deadLettered = RecordFailure(
+                        message, ex.ToString(), timeProvider.GetUtcNow().UtcDateTime, _options);
                     metrics.OutboxFailed();
-                    logger.LogError(ex, "Failed to process outbox message {MessageId}.", message.Id);
+
+                    if (deadLettered)
+                    {
+                        logger.LogError(ex,
+                            "Outbox message {MessageId} dead-lettered after {RetryCount} attempts.",
+                            message.Id, message.RetryCount);
+                    }
+                    else
+                    {
+                        logger.LogWarning(ex,
+                            "Outbox message {MessageId} failed on attempt {RetryCount}; next attempt at {NextAttemptUtc:o}.",
+                            message.Id, message.RetryCount, message.NextAttemptUtc);
+                    }
                 }
             }
 
@@ -92,5 +108,25 @@ internal sealed class OutboxProcessor(
                 $"Cannot resolve outbox message type '{message.Type}'.");
 
         return (IDomainEvent)JsonSerializer.Deserialize(message.Content, type)!;
+    }
+
+    internal static bool RecordFailure(OutboxMessage message, string error, DateTime nowUtc, OutboxOptions options)
+    {
+        message.RetryCount++;
+        message.Error = error;
+
+        if (message.RetryCount >= options.MaxRetries)
+        {
+            message.ProcessedOnUtc = nowUtc;
+            message.NextAttemptUtc = null;
+            return true;
+        }
+
+        double delaySeconds = Math.Min(
+            options.BaseRetryDelaySeconds * Math.Pow(2, message.RetryCount - 1),
+            options.MaxRetryDelaySeconds);
+
+        message.NextAttemptUtc = nowUtc.AddSeconds(delaySeconds);
+        return false;
     }
 }

@@ -15,24 +15,22 @@ internal sealed class StatementIngestionWorker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Statement ingestion worker started (queue {QueueUrl}).", _options.QueueUrl);
+        logger.LogInformation(
+            "Statement ingestion worker started (queue {QueueUrl}, max concurrency {MaxConcurrency}).",
+            _options.QueueUrl, _options.MaxConcurrency);
+
+        var parallelOptions = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = Math.Max(1, _options.MaxConcurrency)
+        };
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            IReadOnlyList<StatementIngestionMessage> messages;
+
             try
             {
-                IReadOnlyList<StatementIngestionMessage> messages = await source.ReceiveAsync(stoppingToken);
-
-                if (messages.Count == 0)
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(_options.EmptyPollDelaySeconds), stoppingToken);
-                    continue;
-                }
-
-                foreach (StatementIngestionMessage message in messages)
-                {
-                    await ProcessOneAsync(message, stoppingToken);
-                }
+                messages = await source.ReceiveAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -44,32 +42,55 @@ internal sealed class StatementIngestionWorker(
             {
                 logger.LogError(ex, "Statement ingestion poll failed; backing off.");
                 await Task.Delay(TimeSpan.FromSeconds(_options.ErrorBackoffSeconds), stoppingToken);
+                continue;
             }
+
+            if (messages.Count == 0)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(_options.EmptyPollDelaySeconds), stoppingToken);
+                continue;
+            }
+
+            await Parallel.ForEachAsync(messages, parallelOptions, ProcessOneAsync);
         }
 
         logger.LogInformation("Statement ingestion worker stopping.");
     }
 
-    private async Task ProcessOneAsync(StatementIngestionMessage message, CancellationToken cancellationToken)
+    private async ValueTask ProcessOneAsync(
+        StatementIngestionMessage message,
+        CancellationToken cancellationToken)
     {
-        using IServiceScope scope = scopeFactory.CreateScope();
-        StatementIngestionProcessor processor =
-            scope.ServiceProvider.GetRequiredService<StatementIngestionProcessor>();
-
-        Result<Guid> result = await processor.ProcessAsync(message, cancellationToken);
-
-        if (result.IsSuccess)
+        try
         {
-            await source.AcknowledgeAsync(message, cancellationToken);
-            logger.LogInformation(
-                "Ingested statement {StatementId} for customer {CustomerId} (document {DocumentId}).",
-                result.Value, message.CustomerId, message.DocumentId);
+            using IServiceScope scope = scopeFactory.CreateScope();
+            StatementIngestionProcessor processor =
+                scope.ServiceProvider.GetRequiredService<StatementIngestionProcessor>();
+
+            Result<Guid> result = await processor.ProcessAsync(message, cancellationToken);
+
+            if (result.IsSuccess)
+            {
+                await source.AcknowledgeAsync(message, cancellationToken);
+                logger.LogInformation(
+                    "Ingested statement {StatementId} for customer {CustomerId} (document {DocumentId}).",
+                    result.Value, message.CustomerId, message.DocumentId);
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Ingestion rejected for customer {CustomerId} (document {DocumentId}): {Error}. Left for redelivery.",
+                    message.CustomerId, message.DocumentId, result.Error.Code);
+            }
         }
-        else
+#pragma warning disable CA1031
+        catch (Exception ex)
+#pragma warning restore CA1031
         {
-            logger.LogWarning(
-                "Ingestion rejected for customer {CustomerId} (document {DocumentId}): {Error}. Left for redelivery.",
-                message.CustomerId, message.DocumentId, result.Error.Code);
+            logger.LogError(
+                ex,
+                "Ingestion threw for customer {CustomerId} (document {DocumentId}); left for redelivery.",
+                message.CustomerId, message.DocumentId);
         }
     }
 }

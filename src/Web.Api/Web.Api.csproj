@@ -18,6 +18,9 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Scrutor" />
+    <PackageReference Include="VaultSharp" />
+    <PackageReference Include="StackExchange.Redis" />
+    <PackageReference Include="RedisRateLimiting.AspNetCore" />
     <PackageReference Include="tusdotnet" />
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.Seq" />
@@ -31,6 +34,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="IntegrationTests" />
+    <InternalsVisibleTo Include="Web.Api.UnitTests" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Apply with: kubectl apply -k k8s/monitoring
+resources:
+  - namespace.yaml
+  - prometheus.yaml
+  - grafana.yaml
+  - prometheus-rules.yaml
+  - servicemonitor.yaml
+  - networkpolicy-allow-scrape.yaml
+
+# The Grafana provisioning ConfigMap is assembled from files on disk so the dashboard JSON has a
+# single source of truth (k8s/monitoring/dashboards/), shared with the local docker-compose Grafana.
+configMapGenerator:
+  - name: grafana-provisioning
+    namespace: monitoring
+    files:
+      - datasources.yaml=provisioning/datasources.yaml
+      - dashboards.yaml=provisioning/dashboards.yaml
+      - web-api.json=dashboards/web-api.json
+      - statements-revoked.json=dashboards/statements-revoked.json
+    options:
+      labels:
+        app.kubernetes.io/name: grafana
+        app.kubernetes.io/part-of: secure-statement-delivery
+
+# Keep the name stable (grafana-provisioning) so the Deployment's volume + subPath mounts resolve
+# without a hash suffix. Trade-off: dashboard changes need a manual `kubectl rollout restart
+# deployment/grafana -n monitoring` to take effect.
+generatorOptions:
+  disableNameSuffixHash: true

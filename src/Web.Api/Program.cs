@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
-using Application;
 using HealthChecks.UI.Client;
 using Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -10,13 +9,19 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Infrastructure.Storage;
+using RedisRateLimiting;
+using RedisRateLimiting.AspNetCore;
 using Serilog;
+using StackExchange.Redis;
 using Web.Api;
+using Web.Api.Configuration;
 using Web.Api.Extensions;
 using Web.Api.Features.Statements.Ingestion;
 using Web.Api.Features.Statements.ResumableUpload;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+builder.Configuration.AddVaultSecrets(builder.Configuration);
 
 builder.AddServiceDefaults();
 
@@ -67,6 +72,7 @@ builder.Services.AddCors(options =>
             policy.WithOrigins(corsOrigins)
                 .AllowAnyHeader()
                 .AllowAnyMethod()
+                .WithExposedHeaders("Location", "Upload-Offset", "Tus-Resumable", "Upload-Expires")
                 .AllowCredentials();
         }
     }));
@@ -74,9 +80,8 @@ builder.Services.AddCors(options =>
 builder.Services.AddSwaggerGenWithAuth();
 
 builder.Services
-    .AddApplication()
     .AddPresentation()
-    .AddInfrastructure(builder.Configuration);
+    .AddInfrastructure(builder.Configuration, builder.Environment);
 
 builder.Services.AddEndpoints(Assembly.GetExecutingAssembly());
 
@@ -84,31 +89,70 @@ builder.Services.AddResumableUploads();
 
 builder.Services.AddStatementIngestion(builder.Configuration);
 
+string? rateLimitRedis = builder.Configuration.GetConnectionString("Redis");
+
+if (string.IsNullOrWhiteSpace(rateLimitRedis) &&
+    !builder.Environment.IsDevelopment() &&
+    !builder.Environment.IsEnvironment("Testing"))
+{
+    throw new InvalidOperationException(
+        "The 'Redis' connection string is required outside Development. " +
+        "In-memory rate limiting is per-instance and does not enforce limits across replicas.");
+}
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-    options.AddPolicy("auth", httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            GetRateLimitPartitionKey(httpContext),
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 10,
-                Window = TimeSpan.FromMinutes(1),
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                QueueLimit = 0
-            }));
+    if (!string.IsNullOrWhiteSpace(rateLimitRedis))
+    {
+        var multiplexer = new Lazy<IConnectionMultiplexer>(
+            () => ConnectionMultiplexer.Connect(rateLimitRedis));
 
-    options.AddPolicy("api", httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            GetRateLimitPartitionKey(httpContext),
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 100,
-                Window = TimeSpan.FromMinutes(1),
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                QueueLimit = 5
-            }));
+        options.AddPolicy("auth", httpContext =>
+            RedisRateLimitPartition.GetFixedWindowRateLimiter(
+                GetRateLimitPartitionKey(httpContext),
+                _ => new RedisFixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromMinutes(1),
+                    ConnectionMultiplexerFactory = () => multiplexer.Value
+                }));
+
+        options.AddPolicy("api", httpContext =>
+            RedisRateLimitPartition.GetFixedWindowRateLimiter(
+                GetRateLimitPartitionKey(httpContext),
+                _ => new RedisFixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 100,
+                    Window = TimeSpan.FromMinutes(1),
+                    ConnectionMultiplexerFactory = () => multiplexer.Value
+                }));
+    }
+    else
+    {
+        options.AddPolicy("auth", httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                GetRateLimitPartitionKey(httpContext),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                }));
+
+        options.AddPolicy("api", httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                GetRateLimitPartitionKey(httpContext),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 100,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 5
+                }));
+    }
 });
 
 static string GetRateLimitPartitionKey(HttpContext httpContext)

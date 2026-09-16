@@ -1,8 +1,9 @@
 using System.Diagnostics.Metrics;
+using Application.Abstractions.Observability;
 
 namespace Infrastructure.Observability;
 
-public sealed class StatementMetrics
+public sealed class StatementMetrics : IStatementMetrics
 {
     public const string MeterName = "SecureStatementDelivery";
 
@@ -10,6 +11,7 @@ public sealed class StatementMetrics
     private readonly Meter _meter;
 #pragma warning restore S1450
     private readonly Counter<long> _uploaded;
+    private readonly Counter<long> _revoked;
     private readonly Counter<long> _uploadRejected;
     private readonly Counter<long> _outboxProcessed;
     private readonly Counter<long> _outboxFailed;
@@ -20,6 +22,8 @@ public sealed class StatementMetrics
 
         _uploaded = _meter.CreateCounter<long>(
             "statements.uploaded", description: "Statements successfully ingested.");
+        _revoked = _meter.CreateCounter<long>(
+            "statements.revoked", description: "Statements revoked by an administrator.");
         _uploadRejected = _meter.CreateCounter<long>(
             "statements.upload_rejected", description: "Uploads rejected before persistence.");
         _outboxProcessed = _meter.CreateCounter<long>(
@@ -29,6 +33,8 @@ public sealed class StatementMetrics
     }
 
     public void StatementUploaded() => _uploaded.Add(1);
+
+    public void StatementRevoked() => _revoked.Add(1);
 
     public void UploadRejected(string reason) =>
         _uploadRejected.Add(1, new KeyValuePair<string, object?>("reason", reason));

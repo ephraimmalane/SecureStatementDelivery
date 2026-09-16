@@ -232,8 +232,16 @@ kubectl get hpa -n secure-statements
 | Method | Path | Description | Auth |
 |--------|------|-------------|------|
 | `POST` | `/auth/register` | Create customer account | — |
-| `POST` | `/auth/login` | Login, returns JWT + refresh token | — |
-| `POST` | `/auth/refresh` | Rotate refresh token | — |
+| `POST` | `/auth/login` | **Dev/test only** (ROPC). Login, returns JWT + refresh token | — |
+| `POST` | `/auth/refresh` | **Dev/test only** (ROPC). Rotate the refresh token | — |
+
+> **`/auth/login` and `/auth/refresh` are development conveniences and are not mapped in Production**
+> (they implement `IDevelopmentOnlyEndpoint`). In production the API is a pure OAuth2 **resource
+> server** — it only validates access tokens. Clients obtain tokens via **Authorization Code + PKCE**
+> and **refresh directly against Keycloak's token endpoint** (`grant_type=refresh_token`); the API is
+> never in the credential or refresh path. Refresh-token **rotation + reuse detection** are enforced
+> by Keycloak (`revokeRefreshToken: true`, `refreshTokenMaxReuse: 0` in the realm). For browser
+> clients, front the flow with a BFF so the refresh token lives in an `httpOnly` cookie, never in JS.
 
 ### Statements
 
@@ -241,7 +249,7 @@ kubectl get hpa -n secure-statements
 |--------|------|-------------|------------|
 | `GET` | `/statements` | List statements (paginated) | `StatementsReadOwn` |
 | `GET` | `/statements/{id}` | Get statement details | `StatementsReadOwn` |
-| `POST` | `/statements/upload` | Admin manual upload of a PDF (multipart) | `StatementsUpload` |
+| `POST` | `/customers/{customerId}/statements` | Admin manual upload of a PDF for a customer (multipart) | `StatementsUpload` |
 | `POST` | `/statements/ingest` | **Machine-to-machine ingestion** (multipart) — the statement-generation pipeline pushes statements | *(service account: `statement-ingest` role)* |
 | `GET` | `/statements/{id}/content` | **In-app authenticated download** (JWT is the credential) | `StatementsDownload` |
 | `POST` | `/statements/{id}/download-tokens` | Generate signed time-limited download link | `StatementsDownload` |
@@ -270,7 +278,7 @@ actor is recorded:
 
 | Who | How (transport) | Auth | When to use |
 |-----|-----------------|------|-------------|
-| **Human admin** (actor = admin's user id) | `POST /statements/upload` | `StatementsUpload` permission | Corrections, one-offs, the demo |
+| **Human admin** (actor = admin's user id) | `POST /customers/{customerId}/statements` | `StatementsUpload` permission | Corrections, one-offs, the demo |
 | | `POST /statements/upload/resumable` (TUS) | `StatementsUpload` permission | Same, but for large / unreliable uploads |
 | **Machine** (actor = `StatementIngestionService`) | `POST /statements/ingest` — **push** | `statement-ingest` service-account role | Generator calls the API directly |
 | | S3 event → SQS → worker — **pull** | `statement-ingest` service account | Generator drops files in a bucket |
@@ -279,7 +287,7 @@ actor is recorded:
 > upload; pull is a queue-driven variant of push. **In production the machine path is the real one**
 > (millions of statements per cycle); the admin path exists for corrections and one-offs.
 
-So the manual admin upload (`POST /statements/upload`) is a **convenience adapter**, not the
+So the manual admin upload (`POST /customers/{customerId}/statements`) is a **convenience adapter**, not the
 production path. Ingestion is machine-driven and **idempotent** (any real pipeline is at-least-once),
 and all adapters funnel through the exact same domain path — `Statement.Create` → validate PDF
 → malware scan → AES-encrypt with the customer's SA ID → store (WORM) → `Statement` + audit row:
@@ -414,9 +422,9 @@ caller never supplies a password.
   **encrypted at rest** (AES-256-GCM, `FieldEncryption:Key`), and looked up server-side at upload
   time. It is never accepted on the upload request and is redacted from all logs/diagnostics.
 - The SA ID number is **mandatory at registration** and stored in a non-nullable column, so every
-  customer always has one on file. An admin can still correct it via
-  `PUT /customers/{id}/south-african-id` (requires the `Admin.Users` permission), which applies the
-  same validation and encrypts the value at rest.
+  customer always has one on file. It is treated as an identity anchor: there is deliberately no
+  admin "set/change ID" endpoint — a genuine correction would belong to a controlled, audited KYC
+  process, not a routine mutation.
 - Encrypting the PDF also opens it, so a structurally invalid PDF is rejected at upload.
 - The stored file is already encrypted, so the secure download path is unchanged — the S3 presigned
   redirect serves the encrypted bytes directly, and `isPasswordProtected` is always `true`.

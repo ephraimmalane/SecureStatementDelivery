@@ -2,6 +2,7 @@ using Amazon.S3;
 using Application.Abstractions.Authentication;
 using Application.Abstractions.Cache;
 using Application.Abstractions.Data;
+using Application.Abstractions.Observability;
 using Application.Abstractions.Storage;
 using Infrastructure.Authentication;
 using Infrastructure.Authorization;
@@ -9,6 +10,7 @@ using Infrastructure.Cache;
 using Infrastructure.Database;
 using Infrastructure.DomainEvents;
 using Infrastructure.Keycloak;
+using Infrastructure.Notifications;
 using Infrastructure.Outbox;
 using Infrastructure.Security;
 using Infrastructure.Storage;
@@ -20,6 +22,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using nClam;
@@ -35,13 +38,15 @@ public static class DependencyInjection
 
     public static IServiceCollection AddInfrastructure(
         this IServiceCollection services,
-        IConfiguration configuration) =>
+        IConfiguration configuration,
+        IHostEnvironment environment) =>
         services
             .AddServices()
             .AddFieldEncryption(configuration)
             .AddDatabase(configuration)
             .AddOutbox(configuration)
-            .AddRedisCache(configuration)
+            .AddNotifications(configuration)
+            .AddRedisCache(configuration, environment)
             .AddFileStorage(configuration)
             .AddContentScanning(configuration)
             .AddHealthChecks(configuration)
@@ -52,7 +57,7 @@ public static class DependencyInjection
     {
         services.AddSingleton(TimeProvider.System);
         services.AddTransient<IDomainEventsDispatcher, DomainEventsDispatcher>();
-        services.AddSingleton<Observability.StatementMetrics>();
+        services.AddSingleton<IStatementMetrics, Observability.StatementMetrics>();
         return services;
     }
 
@@ -116,7 +121,8 @@ public static class DependencyInjection
 
     private static IServiceCollection AddRedisCache(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IHostEnvironment environment)
     {
         string? redisConnection = configuration.GetConnectionString("Redis");
 
@@ -124,9 +130,15 @@ public static class DependencyInjection
         {
             services.AddStackExchangeRedisCache(o => o.Configuration = redisConnection);
         }
-        else
+        else if (environment.IsDevelopment() || environment.IsEnvironment("Testing"))
         {
             services.AddDistributedMemoryCache();
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "The 'Redis' connection string is required outside Development. " +
+                "In-memory cache is per-instance and breaks distributed caching and rate limiting across replicas.");
         }
 
         services.AddSingleton<ICacheService, CacheService>();
@@ -242,7 +254,7 @@ public static class DependencyInjection
 
         services.AddSingleton<KeycloakAdminTokenCache>();
 
-        services.AddHttpClient<IKeycloakClient, KeycloakClient>();
+        services.AddHttpClient<IIdentityProviderClient, KeycloakClient>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(o =>

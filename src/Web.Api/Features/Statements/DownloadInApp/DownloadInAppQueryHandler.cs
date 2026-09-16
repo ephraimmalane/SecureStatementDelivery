@@ -26,7 +26,7 @@ internal sealed class DownloadInAppQueryHandler(
             .AsNoTracking()
             .SingleOrDefaultAsync(s => s.Id == query.StatementId, cancellationToken);
 
-        if (statement is null || !statement.IsActive)
+        if (statement is null)
         {
             return Result.Failure<StatementFileResponse>(StatementErrors.NotFound(query.StatementId));
         }
@@ -36,10 +36,15 @@ internal sealed class DownloadInAppQueryHandler(
             return Result.Failure<StatementFileResponse>(StatementErrors.AccessDenied);
         }
 
-        context.DownloadAuditLogs.Add(DownloadAuditLog.Create(
+        if (!statement.IsActive)
+        {
+            return Result.Failure<StatementFileResponse>(StatementErrors.AlreadyRevoked);
+        }
+
+        context.AuditLogs.Add(AuditLog.Create(
             statement.Id,
             userId,
-            AuditAction.StatementDownloaded,
+            AuditAction.DownloadAuthorized,
             downloadTokenId: null,
             query.IpAddress,
             query.UserAgent));

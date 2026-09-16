@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SecureStatements</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Floating "which API did that action call" indicator -->
+  <div id="apiToast" class="api-toast"></div>
+  <!-- Centered notice for non-API messages (errors, confirmations) -->
+  <div id="notice" class="notice"></div>
+
+  <!-- App bar -->
+  <nav class="nav">
+    <div class="logo"><span class="lock">🔒</span> SecureStatements <span class="tag">demo</span></div>
+    <div class="nav-right">
+      <span id="whoami" class="whoami hidden"></span>
+      <button id="refreshBtn" class="link hidden" onclick="refreshSession()" title="Dev: rotate the access token via POST /auth/refresh">Refresh session</button>
+      <button id="devToggle" class="link" onclick="toggleDrawer()">&lt;/&gt; API activity</button>
+      <button id="signout" class="btn btn-ghost hidden" onclick="logout()">Sign out</button>
+    </div>
+  </nav>
+
+  <!-- =================== AUTH (journey start) =================== -->
+  <section id="view-auth" class="view">
+    <div class="hero">
+      <h1>Your statements, delivered securely.</h1>
+      <p>Sign in to view and download your account statements — or register to get started.</p>
+    </div>
+    <div class="auth-card">
+      <div class="tabs">
+        <button class="tab active" data-tab="signin" onclick="authTab('signin')">Sign in</button>
+        <button class="tab" data-tab="register" onclick="authTab('register')">Register</button>
+      </div>
+
+      <div id="pane-signin" class="pane">
+        <label>Email</label>
+        <input id="login_email" type="email" placeholder="you@example.com" autocomplete="username" />
+        <label>Password</label>
+        <input id="login_pw" type="password" placeholder="Your password" autocomplete="current-password" />
+        <button class="btn btn-primary block" onclick="login()">Sign in</button>
+        <p class="ep">calls <code>POST /auth/login</code></p>
+        <div id="login_out" class="msg"></div>
+      </div>
+
+      <div id="pane-register" class="pane hidden">
+        <label>Email</label><input id="reg_email" type="email" placeholder="you@example.com" />
+        <div class="grid2">
+          <div><label>First name</label><input id="reg_first" placeholder="e.g. Thabo" /></div>
+          <div><label>Last name</label><input id="reg_last" placeholder="e.g. Nkosi" /></div>
+        </div>
+        <div class="grid2">
+          <div><label>Password</label><input id="reg_pw" type="password" placeholder="12+ chars: upper, lower, digit & symbol" /></div>
+          <div><label>SA ID number</label><input id="reg_said" placeholder="13-digit SA ID" /></div>
+        </div>
+        <button class="btn btn-primary block" onclick="registerCustomer()">Create account</button>
+        <p class="ep">calls <code>POST /auth/register</code></p>
+        <div class="quick">
+          <button class="chip" onclick="fillSampleCustomer()">Use sample details</button>
+        </div>
+        <div id="reg_out" class="msg"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== CUSTOMER PORTAL =================== -->
+  <section id="view-customer" class="view hidden">
+    <header class="page-head">
+      <div>
+        <h2 id="cust_greeting">My statements</h2>
+        <p class="sub">View or securely share your account statements.</p>
+      </div>
+      <button class="btn btn-ghost" onclick="loadMyStatements()">Refresh <span class="ep-inline">GET /statements</span></button>
+    </header>
+
+    <div id="cust_list" class="cards"></div>
+    <p class="ep">this list — <code>GET /statements</code> · row actions — <b>View</b> <code>GET /statements/{id}/content</code> · <b>Details</b> <code>GET /statements/{id}</code> · <b>Share link</b> <code>POST /statements/{id}/download-tokens</code></p>
+
+    <div class="panel">
+      <h3>Combine a date range into one PDF</h3>
+      <div class="inline-form">
+        <div><label>From</label><input id="con_from" value="2024-01" /></div>
+        <div><label>To</label><input id="con_to" value="2024-03" /></div>
+        <button class="btn btn-primary" onclick="downloadConsolidated()">Download combined PDF</button>
+      </div>
+      <p class="ep">calls <code>GET /statements/consolidated</code></p>
+      <div id="con_out" class="msg"></div>
+    </div>
+  </section>
+
+  <!-- =================== ADMIN CONSOLE =================== -->
+  <section id="view-admin" class="view hidden">
+    <header class="page-head">
+      <div>
+        <h2>Admin console</h2>
+        <p class="sub">Deliver statements to customers and review the audit trail.</p>
+      </div>
+      <div class="tabs pill">
+        <button class="tab active" data-atab="customers" onclick="adminTab('customers')">Customers</button>
+        <button class="tab" data-atab="audit" onclick="adminTab('audit')">Audit log</button>
+      </div>
+    </header>
+
+    <!-- Customers tab -->
+    <div id="atab-customers">
+      <div class="panel">
+        <h3>Find a customer</h3>
+        <div class="inline-form">
+          <div class="grow"><label>Customer email</label><input id="lookup_email" value="cust@test.com" /></div>
+          <button class="btn btn-primary" onclick="lookupCustomer()">Find</button>
+        </div>
+        <p class="ep">calls <code>GET /admin/customers?email=…</code> (exact match — no browsing)</p>
+        <div id="lookup_out" class="msg"></div>
+      </div>
+
+      <div id="customer_detail" class="hidden">
+        <div class="profile">
+          <div class="avatar" id="cust_avatar">?</div>
+          <div>
+            <div id="cust_name" class="profile-name"></div>
+            <div id="cust_meta" class="profile-meta"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Deliver a statement</h3>
+          <div class="grid2">
+            <div><label>Period (YYYY-MM)</label><input id="up_period" value="2024-01" /></div>
+            <div><label>Description</label><input id="up_desc" value="January statement" /></div>
+          </div>
+          <label>PDF file</label>
+          <input id="up_file" type="file" accept="application/pdf" />
+          <label class="check"><input type="checkbox" id="up_resumable" /> Large / unreliable connection — use resumable upload</label>
+          <div class="btnrow">
+            <button class="btn btn-ghost" onclick="makeSamplePdf()">Generate sample PDF</button>
+            <button class="btn btn-ghost" onclick="makeLargeSamplePdf()">Generate large sample (12 MB)</button>
+            <button class="btn btn-primary" onclick="deliverStatement()">Upload &amp; deliver</button>
+          </div>
+          <p class="ep" id="up_ep">calls <code>POST /customers/{id}/statements</code></p>
+          <div class="progress hidden" id="up_progwrap"><div id="up_bar" class="progress-fill"></div></div>
+          <div id="up_sse" class="sub small"></div>
+          <div id="up_out" class="msg"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3>This customer's statements</h3>
+            <button class="btn btn-ghost sm" onclick="loadCustomerStatements()">Refresh <span class="ep-inline">GET /statements?customerId=</span></button>
+          </div>
+          <div id="admin_list" class="cards"></div>
+          <p class="ep">this list — <code>GET /statements?customerId=…</code> · row actions — <b>View</b> <code>GET /statements/{id}/content</code> · <b>Details</b> <code>GET /statements/{id}</code> · <b>Revoke</b> <code>DELETE /statements/{id}</code></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Audit tab -->
+    <div id="atab-audit" class="hidden">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Audit trail <span class="sub small">append-only, database-enforced</span></h3>
+          <button class="btn btn-ghost sm" onclick="loadAudit()">Refresh <span class="ep-inline">GET /admin/audit-logs</span></button>
+        </div>
+        <div id="audit_out" class="tablewrap"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Share-link modal -->
+  <div id="shareModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>Secure download link</h3>
+      <p class="sub">Single-use, time-limited, IP-bound. The link carries no login — the token <i>is</i> the credential.</p>
+      <div id="share_body" class="kv-list"></div>
+      <label>Shareable link</label>
+      <textarea id="share_token" rows="3" readonly></textarea>
+      <div class="btnrow">
+        <button class="btn btn-primary" onclick="openShareLink()">Open link (download)</button>
+        <button class="btn btn-ghost" onclick="copyShareLink()">Copy link</button>
+        <button class="btn btn-ghost" onclick="closeModal()">Close</button>
+      </div>
+      <p class="ep">generated by <code>POST /statements/{id}/download-tokens</code>, redeemed via <code>GET /statements/download?token=…</code></p>
+    </div>
+  </div>
+
+  <!-- Statement details modal -->
+  <div id="detailModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>Statement details</h3>
+      <div id="detail_body" class="kv-list"></div>
+      <div class="btnrow"><button class="btn btn-ghost" onclick="closeModal()">Close</button></div>
+      <p class="ep">loaded via <code>GET /statements/{id}</code></p>
+    </div>
+  </div>
+
+  <!-- Revoke modal -->
+  <div id="revokeModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>Revoke statement</h3>
+      <p class="sub">Soft-deletes the statement (status → Revoked) and writes an audit entry. It can no longer be downloaded.</p>
+      <label>Reason</label>
+      <input id="revoke_reason" />
+      <div class="btnrow">
+        <button class="btn btn-primary" onclick="confirmRevoke()">Revoke statement</button>
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      </div>
+      <p class="ep">calls <code>DELETE /statements/{id}</code></p>
+      <div id="revoke_out" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- Developer drawer -->
+  <aside id="devDrawer" class="drawer hidden">
+    <div class="drawer-head">
+      <h3>API activity</h3>
+      <button class="link" onclick="toggleDrawer()">close ✕</button>
+    </div>
+    <div class="drawer-cfg">
+      <label>API base URL</label>
+      <input id="baseUrl" value="https://localhost:5001" spellcheck="false" />
+    </div>
+    <div class="drawer-log-head"><span>Requests</span><button class="link" onclick="clearLog()">clear</button></div>
+    <div id="log" class="log"></div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>

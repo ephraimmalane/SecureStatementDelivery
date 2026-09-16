@@ -1,19 +1,19 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Messaging;
 using Domain.Users;
-using Infrastructure.Keycloak;
 using SharedKernel;
 using System.Net;
 
 namespace Web.Api.Features.Users.Login;
 
-internal sealed class LoginUserCommandHandler(IKeycloakClient keycloakClient, TimeProvider timeProvider)
+internal sealed class LoginUserCommandHandler(IIdentityProviderClient identityProvider, TimeProvider timeProvider)
     : ICommandHandler<LoginUserCommand, LoginResponse>
 {
     public async Task<Result<LoginResponse>> Handle(LoginUserCommand command, CancellationToken cancellationToken)
     {
         try
         {
-            KeycloakTokenResponse token = await keycloakClient.LoginAsync(
+            AuthenticationResult token = await identityProvider.LoginAsync(
                 command.Email,
                 command.Password,
                 cancellationToken);
@@ -21,15 +21,17 @@ internal sealed class LoginUserCommandHandler(IKeycloakClient keycloakClient, Ti
             return Result.Success(new LoginResponse(
                 token.AccessToken,
                 token.RefreshToken,
-                timeProvider.GetUtcNow().UtcDateTime.AddSeconds(token.ExpiresIn)));
+                timeProvider.GetUtcNow().UtcDateTime.AddSeconds(token.ExpiresInSeconds)));
         }
-        catch (KeycloakAuthException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        catch (IdentityProviderException ex) when (
+            ex.Error == "invalid_grant" || ex.StatusCode == HttpStatusCode.Unauthorized)
         {
             return Result.Failure<LoginResponse>(UserErrors.InvalidCredentials);
         }
-        catch (KeycloakAuthException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        catch (IdentityProviderException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
         {
             return Result.Failure<LoginResponse>(UserErrors.AccountInactive);
         }
+        
     }
 }

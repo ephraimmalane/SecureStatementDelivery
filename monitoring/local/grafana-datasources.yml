@@ -1,0 +1,10 @@
+# Datasource provisioning for local Grafana. uid MUST be "prometheus" to match the
+# datasource references baked into the dashboard JSON files.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true

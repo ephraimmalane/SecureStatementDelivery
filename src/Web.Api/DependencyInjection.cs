@@ -13,15 +13,13 @@ public static class DependencyInjection
     public static IServiceCollection AddPresentation(this IServiceCollection services)
     {
         services.AddEndpointsApiExplorer();
-        services.AddSwaggerGen();
 
         services.AddOptions<ConsolidationOptions>()
             .BindConfiguration(ConsolidationOptions.SectionName)
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
-        services.AddControllers();
-
+        services.AddExceptionHandler<KeycloakAuthExceptionHandler>();
         services.AddExceptionHandler<GlobalExceptionHandler>();
         services.AddProblemDetails();
 

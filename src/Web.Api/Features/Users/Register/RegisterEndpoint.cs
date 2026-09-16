@@ -1,4 +1,5 @@
 using Application.Abstractions.Messaging;
+using Serilog;
 using SharedKernel;
 using Web.Api.Extensions;
 using Web.Api.Features;
@@ -37,6 +38,7 @@ internal sealed class RegisterEndpoint : IEndpoint
                 request.LastName,
                 request.Password,
                 request.SouthAfricanIdNumber);
+
 
             Result<Guid> result = await handler.Handle(command, cancellationToken);
 

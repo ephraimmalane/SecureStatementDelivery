@@ -19,7 +19,7 @@ public sealed record PagedAuditLogResponse(
 
 public sealed record AuditLogResponse(
     Guid Id,
-    Guid StatementId,
+    Guid? StatementId,
     Guid UserId,
     string UserName,
     Guid? DownloadTokenId,

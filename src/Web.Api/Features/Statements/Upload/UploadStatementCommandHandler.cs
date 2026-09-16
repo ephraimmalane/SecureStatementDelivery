@@ -1,9 +1,9 @@
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
+using Application.Abstractions.Observability;
 using Application.Abstractions.Storage;
 using Domain.AuditLogs;
 using Domain.Statements;
-using Infrastructure.Observability;
 using Microsoft.EntityFrameworkCore;
 using SharedKernel;
 
@@ -16,7 +16,7 @@ internal sealed class UploadStatementCommandHandler(
     IFileContentScanner contentScanner,
     IFileTypeValidator fileTypeValidator,
     IContentHasher contentHasher,
-    StatementMetrics metrics) : ICommandHandler<UploadStatementCommand, Guid>
+    IStatementMetrics metrics) : ICommandHandler<UploadStatementCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(UploadStatementCommand command, CancellationToken cancellationToken)
     {
@@ -140,7 +140,7 @@ internal sealed class UploadStatementCommandHandler(
 
         context.Statements.Add(statement);
 
-        context.DownloadAuditLogs.Add(DownloadAuditLog.Create(
+        context.AuditLogs.Add(AuditLog.Create(
             statement.Id,
             principalId,
             AuditAction.StatementUploaded));

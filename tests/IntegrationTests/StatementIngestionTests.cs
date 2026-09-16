@@ -56,7 +56,7 @@ public sealed class StatementIngestionTests(StatementDeliveryWebApplicationFacto
         statement.IsActive.ShouldBeTrue();
         statement.IsPasswordProtected.ShouldBeTrue();
 
-        bool audited = await db.DownloadAuditLogs.AsNoTracking()
+        bool audited = await db.AuditLogs.AsNoTracking()
             .AnyAsync(a => a.StatementId == result.Value && a.Action == AuditAction.StatementUploaded);
         audited.ShouldBeTrue();
     }

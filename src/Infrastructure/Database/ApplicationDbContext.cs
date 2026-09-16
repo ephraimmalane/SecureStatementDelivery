@@ -8,6 +8,7 @@ using Infrastructure.Outbox;
 using Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using SharedKernel;
 
 namespace Infrastructure.Database;
@@ -18,7 +19,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<User> Users { get; set; }
     public DbSet<Statement> Statements { get; set; }
     public DbSet<DownloadToken> DownloadTokens { get; set; }
-    public DbSet<DownloadAuditLog> DownloadAuditLogs { get; set; }
+    public DbSet<AuditLog> AuditLogs { get; set; }
     public DbSet<OutboxMessage> OutboxMessages { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -43,6 +44,38 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     {
         AddDomainEventsAsOutboxMessages();
         return await base.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<T> ExecuteInTransactionAsync<T>(
+        Func<CancellationToken, Task<T>> operation,
+        Func<CancellationToken, Task<T?>>? verifyCommitted = null,
+        CancellationToken cancellationToken = default)
+        where T : class
+    {
+        IExecutionStrategy strategy = Database.CreateExecutionStrategy();
+
+        bool isRetry = false;
+
+        return await strategy.ExecuteAsync(async ct =>
+        {
+            if (isRetry && verifyCommitted is not null)
+            {
+                T? committed = await verifyCommitted(ct);
+                if (committed is not null)
+                {
+                    return committed;
+                }
+            }
+
+            isRetry = true;
+
+            await using IDbContextTransaction transaction = await Database.BeginTransactionAsync(ct);
+
+            T result = await operation(ct);
+
+            await transaction.CommitAsync(ct);
+            return result;
+        }, cancellationToken);
     }
 
     private void AddDomainEventsAsOutboxMessages()

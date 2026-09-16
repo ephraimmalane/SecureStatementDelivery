@@ -1,6 +1,18 @@
 version: 2
 updates:
+  # NuGet dependencies — security and version updates, grouped to reduce PR noise.
   - package-ecosystem: "nuget"
     directory: "/"
     schedule:
       interval: "daily"
+    open-pull-requests-limit: 10
+    groups:
+      dotnet:
+        patterns:
+          - "*"
+
+  # Keep GitHub Actions pinned and patched.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

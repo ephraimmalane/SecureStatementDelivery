@@ -101,7 +101,8 @@ public sealed class ListStatementsFilterTests(StatementDeliveryWebApplicationFac
     {
         using IServiceScope scope = _factory.Services.CreateScope();
         ApplicationDbContext db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var handler = new GetStatementsQueryHandler(db, new StubUserContext(customerId, isAdmin: false));
+        var handler = new GetStatementsQueryHandler(
+            db, new StubUserContext(customerId, isAdmin: false), TimeProvider.System);
         return await handler.Handle(query, CancellationToken.None);
     }
 

@@ -14,6 +14,7 @@ internal sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> log
         string correlationId = httpContext.TraceIdentifier;
 
         logger.LogError(
+            exception,
             "Unhandled {ExceptionType} — CorrelationId: {CorrelationId}",
             exception.GetType().FullName,
             correlationId);

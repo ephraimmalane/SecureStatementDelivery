@@ -55,7 +55,7 @@ internal sealed class DownloadStatementQueryHandler(
         if (downloadToken.IpAddress is not null &&
             !downloadToken.IpAddress.Equals(query.IpAddress, StringComparison.OrdinalIgnoreCase))
         {
-            context.DownloadAuditLogs.Add(DownloadAuditLog.Create(
+            context.AuditLogs.Add(AuditLog.Create(
                 downloadToken.StatementId,
                 claims.UserId,
                 AuditAction.DownloadDenied,
@@ -77,31 +77,51 @@ internal sealed class DownloadStatementQueryHandler(
             return Result.Failure<StatementFileResponse>(StatementErrors.NotFound(downloadToken.StatementId));
         }
 
-        if (downloadToken.IsSingleUse)
+        Result consume = await context.ExecuteInTransactionAsync(async ct =>
         {
-            int consumed = await context.DownloadTokens
-                .Where(t => t.Id == downloadToken.Id && !t.IsUsed)
-                .ExecuteUpdateAsync(
-                    setters => setters
-                        .SetProperty(t => t.IsUsed, true)
-                        .SetProperty(t => t.UsedAt, utcNow),
-                    cancellationToken);
-
-            if (consumed == 0)
+            if (downloadToken.IsSingleUse)
             {
-                return Result.Failure<StatementFileResponse>(DownloadTokenErrors.TokenAlreadyUsed);
+                int consumed = await context.DownloadTokens
+                    .Where(t => t.Id == downloadToken.Id && !t.IsUsed)
+                    .ExecuteUpdateAsync(
+                        setters => setters
+                            .SetProperty(t => t.IsUsed, true)
+                            .SetProperty(t => t.UsedAt, utcNow),
+                        ct);
+
+                if (consumed == 0)
+                {
+                    return Result.Failure(DownloadTokenErrors.TokenAlreadyUsed);
+                }
             }
+
+            context.AuditLogs.Add(AuditLog.Create(
+                statement.Id,
+                claims.UserId,
+                AuditAction.DownloadAuthorized,
+                downloadToken.Id,
+                query.IpAddress,
+                query.UserAgent));
+
+            await context.SaveChangesAsync(ct);
+            return Result.Success();
+        },
+        verifyCommitted: async ct =>
+        {
+            bool authorized = await context.AuditLogs
+                .AsNoTracking()
+                .AnyAsync(
+                    a => a.DownloadTokenId == downloadToken.Id && a.Action == AuditAction.DownloadAuthorized,
+                    ct);
+
+            return authorized ? Result.Success() : null;
+        },
+        cancellationToken);
+
+        if (consume.IsFailure)
+        {
+            return Result.Failure<StatementFileResponse>(consume.Error);
         }
-
-        context.DownloadAuditLogs.Add(DownloadAuditLog.Create(
-            statement.Id,
-            claims.UserId,
-            AuditAction.StatementDownloaded,
-            downloadToken.Id,
-            query.IpAddress,
-            query.UserAgent));
-
-        await context.SaveChangesAsync(cancellationToken);
 
         Uri? presignedUri = await fileStorage.GeneratePresignedDownloadUriAsync(
             statement.StoragePath,

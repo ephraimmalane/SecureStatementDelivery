@@ -13,7 +13,7 @@ internal sealed class GetAuditLogsQueryHandler(IApplicationDbContext context)
         GetAuditLogsQuery query,
         CancellationToken cancellationToken)
     {
-        IQueryable<DownloadAuditLog> logQuery = context.DownloadAuditLogs.AsNoTracking();
+        IQueryable<AuditLog> logQuery = context.AuditLogs.AsNoTracking();
 
         if (query.StatementId.HasValue)
         {

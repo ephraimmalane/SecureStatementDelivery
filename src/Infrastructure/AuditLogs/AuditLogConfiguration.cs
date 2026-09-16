@@ -4,9 +4,9 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Infrastructure.AuditLogs;
 
-internal sealed class DownloadAuditLogConfiguration : IEntityTypeConfiguration<DownloadAuditLog>
+internal sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
 {
-    public void Configure(EntityTypeBuilder<DownloadAuditLog> builder)
+    public void Configure(EntityTypeBuilder<AuditLog> builder)
     {
         builder.HasKey(l => l.Id);
 

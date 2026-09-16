@@ -10,7 +10,7 @@ internal sealed class UploadProgressEndpoint : IEndpoint
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
         app.MapGet("statements/upload/resumable/{fileId}/progress", async (
-            string fileId,
+            string fileId,  
             HttpContext httpContext,
             TusStorageProvider tus,
             CancellationToken cancellationToken) =>

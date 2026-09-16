@@ -11,6 +11,8 @@ public sealed class IngestionOptions
     public int MaxMessagesPerPoll { get; init; } = 10;
     public int WaitTimeSeconds { get; init; } = 20;
 
+    public int MaxConcurrency { get; init; } = 4;
+
     public int EmptyPollDelaySeconds { get; init; } = 5;
     public int ErrorBackoffSeconds { get; init; } = 15;
 

@@ -114,6 +114,19 @@ internal sealed class ResumableUploadCompletedHandler(
             return new ResumableUploadResult(true, duplicateId, null);
         }
 
+        bool activeStatementExists = await context.Statements
+            .AnyAsync(
+                s => s.CustomerId == customerId
+                     && s.Period == period
+                     && s.Status == StatementStatus.Active,
+                ct);
+
+        if (activeStatementExists)
+        {
+            return new ResumableUploadResult(
+                false, null, StatementErrors.ActiveStatementExistsForPeriod(period).Description);
+        }
+
         if (!await contentScanner.IsCleanAsync(content, ct))
         {
             return new ResumableUploadResult(false, null, StatementErrors.MalwareDetected.Description);
@@ -170,8 +183,56 @@ internal sealed class ResumableUploadCompletedHandler(
         Statement statement = statementResult.Value;
 
         context.Statements.Add(statement);
-        context.DownloadAuditLogs.Add(DownloadAuditLog.Create(statement.Id, adminId, AuditAction.StatementUploaded));
-        await context.SaveChangesAsync(ct);
+        context.AuditLogs.Add(AuditLog.Create(statement.Id, adminId, AuditAction.StatementUploaded));
+
+        try
+        {
+            await context.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            await fileStorage.DeleteAsync(storedFile.StoragePath, ct);
+
+            bool activeExists = await context.Statements
+                .AnyAsync(
+                    s => s.CustomerId == customerId
+                         && s.Period == period
+                         && s.Status == StatementStatus.Active,
+                    ct);
+
+            if (activeExists)
+            {
+                return new ResumableUploadResult(
+                    false, null, StatementErrors.ActiveStatementExistsForPeriod(period).Description);
+            }
+
+            if (!string.IsNullOrWhiteSpace(documentId))
+            {
+                Guid winnerId = await context.Statements
+                    .Where(s => s.CustomerId == customerId && s.DocumentId == documentId)
+                    .Select(s => s.Id)
+                    .FirstOrDefaultAsync(ct);
+
+                if (winnerId != Guid.Empty)
+                {
+                    return new ResumableUploadResult(true, winnerId, null);
+                }
+            }
+
+            Guid contentWinnerId = await context.Statements
+                .Where(s => s.CustomerId == customerId
+                            && s.Period == period
+                            && s.ContentHash == contentHash)
+                .Select(s => s.Id)
+                .FirstOrDefaultAsync(ct);
+
+            if (contentWinnerId != Guid.Empty)
+            {
+                return new ResumableUploadResult(true, contentWinnerId, null);
+            }
+
+            throw;
+        }
 
         return new ResumableUploadResult(true, statement.Id, null);
     }

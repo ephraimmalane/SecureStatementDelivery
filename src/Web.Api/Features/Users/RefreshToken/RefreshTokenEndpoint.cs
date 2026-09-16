@@ -7,11 +7,11 @@ using Web.Api.Infrastructure;
 
 namespace Web.Api.Features.Users.RefreshToken;
 
-internal sealed class RefreshTokenEndpoint : IEndpoint
+internal sealed class RefreshTokenEndpoint : IDevelopmentOnlyEndpoint
 {
     public sealed record Request(string RefreshToken);
 
-    public void MapEndpoint(IEndpointRouteBuilder app)
+    public void MapEndpoint(IEndpointRouteBuilder app)  
     {
         RouteGroupBuilder group = app.MapAuthGroup();
 

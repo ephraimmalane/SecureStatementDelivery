@@ -1,7 +1,7 @@
+using Application.Abstractions.Authentication;
 using Application.Abstractions.Data;
 using Application.Abstractions.Messaging;
 using Domain.Users;
-using Infrastructure.Keycloak;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SharedKernel;
@@ -10,7 +10,7 @@ namespace Web.Api.Features.Users.Register;
 
 internal sealed class RegisterUserCommandHandler(
     IApplicationDbContext context,
-    IKeycloakClient keycloakClient,
+    IIdentityProviderClient identityProvider,
     ILogger<RegisterUserCommandHandler> logger) : ICommandHandler<RegisterUserCommand, Guid>
 {
     public async Task<Result<Guid>> Handle(RegisterUserCommand command, CancellationToken cancellationToken)
@@ -19,14 +19,14 @@ internal sealed class RegisterUserCommandHandler(
 
         try
         {
-            keycloakId = await keycloakClient.RegisterUserAsync(
+            keycloakId = await identityProvider.RegisterUserAsync(
                 command.Email,
                 command.FirstName,
                 command.LastName,
                 command.Password,
                 cancellationToken);
         }
-        catch (KeycloakRegistrationException ex)
+        catch (IdentityUserConflictException ex)
         {
             return await ReconcileOrphanedRegistrationAsync(command, ex, cancellationToken);
         }
@@ -65,7 +65,7 @@ internal sealed class RegisterUserCommandHandler(
 
     private async Task<Result<Guid>> ReconcileOrphanedRegistrationAsync(
         RegisterUserCommand command,
-        KeycloakRegistrationException conflict,
+        IdentityUserConflictException conflict,
         CancellationToken cancellationToken)
     {
         bool localMirrorExists = await context.Users
@@ -77,7 +77,7 @@ internal sealed class RegisterUserCommandHandler(
             return Result.Failure<Guid>(conflict.DomainError);
         }
 
-        Guid? keycloakId = await keycloakClient.GetUserIdByEmailAsync(command.Email, cancellationToken);
+        Guid? keycloakId = await identityProvider.GetUserIdByEmailAsync(command.Email, cancellationToken);
         if (keycloakId is null)
         {
             return Result.Failure<Guid>(conflict.DomainError);
@@ -132,7 +132,7 @@ internal sealed class RegisterUserCommandHandler(
             logger.LogError(
                 verifyEx,
                 "Could not verify local persistence for {UserId} after save error '{Err}'; " +
-                "keeping the Keycloak identity.",
+                "keeping the identity-provider identity.",
                 userId,
                 saveEx.Message);
             return false;
@@ -143,13 +143,13 @@ internal sealed class RegisterUserCommandHandler(
     {
         try
         {
-            await keycloakClient.DeleteUserAsync(userId, CancellationToken.None);
+            await identityProvider.DeleteUserAsync(userId, CancellationToken.None);
         }
         catch (Exception rollbackEx)
         {
             logger.LogError(
                 rollbackEx,
-                "Failed to roll back orphaned Keycloak user {UserId}; requires reconciliation.",
+                "Failed to roll back orphaned identity-provider user {UserId}; requires reconciliation.",
                 userId);
         }
     }

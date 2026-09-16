@@ -17,8 +17,8 @@ internal sealed class GetAuditLogsEndpoint : IEndpoint
             string? action,
             DateTime? from,
             DateTime? to,
-            int page,
-            int pageSize,
+            int? page,
+            int? pageSize,
             IQueryHandler<GetAuditLogsQuery, PagedAuditLogResponse> handler,
             CancellationToken cancellationToken) =>
         {
@@ -28,8 +28,8 @@ internal sealed class GetAuditLogsEndpoint : IEndpoint
                 action,
                 from,
                 to,
-                page <= 0 ? 1 : page,
-                pageSize is <= 0 or > 200 ? 50 : pageSize);
+                page is null or <= 0 ? 1 : page.Value,
+                pageSize is null or <= 0 or > 200 ? 50 : pageSize.Value);
 
             Result<PagedAuditLogResponse> result = await handler.Handle(query, cancellationToken);
 
