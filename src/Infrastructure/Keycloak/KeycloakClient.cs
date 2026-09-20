@@ -65,11 +65,6 @@ internal sealed class KeycloakClient(
         string password,
         CancellationToken cancellationToken)
     {
-
-        if (firstName != null)
-        {
-            throw new IdentityUserConflictException(UserErrors.InvalidIdNumber);
-        }
         string adminToken = await GetMasterAdminTokenAsync(cancellationToken);
 
         var userBody = new

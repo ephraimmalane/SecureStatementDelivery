@@ -23,7 +23,9 @@
       "Bash(sed -n '10,16p' .env.example)",
       "Bash(sed -n '44,50p' k8s/secret.yaml)",
       "Bash(sed -n '48,60p' k8s/keycloak/deployment.yaml)",
-      "Bash(sed -n '14,24p' aspire/SecureStatementDelivery.AppHost/AppHost.cs)"
+      "Bash(sed -n '14,24p' aspire/SecureStatementDelivery.AppHost/AppHost.cs)",
+      "Bash(grep -viE '\\(nameof|GetSection|GetValue|Configuration\\\\[|options\\\\.|=> |summary|///|throw|Environment\\\\.GetEnv\\)')",
+      "Bash(dotnet --version)"
     ]
   }
 }

@@ -7,12 +7,6 @@ using Microsoft.Extensions.Options;
 
 namespace Infrastructure.Notifications;
 
-/// <summary>
-/// Publishes a "statement available" message to SQS. The actual channel send (email/SMS/push) is a
-/// downstream consumer's job; keeping this a fast enqueue means the outbox dispatch that calls it is
-/// not blocked on provider latency. The consumer is expected to dedupe on <c>StatementId</c>, since
-/// enqueue is at-least-once.
-/// </summary>
 internal sealed class SqsNotificationService(
     IAmazonSQS sqs,
     IOptions<NotificationOptions> options) : INotificationService

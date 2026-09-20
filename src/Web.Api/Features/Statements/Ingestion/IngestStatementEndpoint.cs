@@ -22,7 +22,7 @@ internal sealed class IngestStatementEndpoint : IEndpoint
         {
             if (file is null || file.Length == 0)
             {
-                return Results.BadRequest(new { Error = "A PDF file is required." });
+                return Results.BadRequest(new { Error = "A non-empty PDF file is required." });
             }
 
             string? documentId = httpContext.Request.Headers["Document-Id"].FirstOrDefault();

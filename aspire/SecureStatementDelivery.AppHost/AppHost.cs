@@ -49,6 +49,15 @@ var vaultSeed = builder.AddContainer("vault-seed", "hashicorp/vault", "1.18")
           "DownloadToken:Secret=$DOWNLOAD_TOKEN_SECRET" \
           "FieldEncryption:Key=$FIELD_ENCRYPTION_KEY"
         """)
+    // One-shot seed job: hidden from the dashboard so its (expected) Exited-0 terminal state does
+    // not read as a failure. It still runs and still gates the web-api via WaitForCompletion below.
+    .WithInitialState(new Aspire.Hosting.ApplicationModel.CustomResourceSnapshot
+    {
+        ResourceType = "container",
+        State = Aspire.Hosting.ApplicationModel.KnownResourceStates.Starting,
+        Properties = [],
+        IsHidden = true,
+    })
     .WaitFor(vault);
 
 // Prometheus scrapes the web-api /metrics endpoint (job "web-api") using the Aspire-specific
